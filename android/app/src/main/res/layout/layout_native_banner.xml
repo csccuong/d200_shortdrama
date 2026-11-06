@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="fill_parent"
+    android:layout_height="wrap_content"
+    android:background="#141418">
+
+    <RelativeLayout
+        android:id="@+id/ad_unit_content"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="fill_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="6dp"
+            android:paddingTop="4dip">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="52dip"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:paddingVertical="4dip">
+
+                <ImageView
+                    android:id="@+id/ad_app_icon"
+                    android:layout_width="44dip"
+                    android:layout_height="match_parent"
+                    android:adjustViewBounds="true" />
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <TextView
+                        android:id="@+id/ad_headline"
+                        android:layout_width="fill_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dip"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:paddingTop="3dp"
+                        android:text=""
+                        android:textColor="@color/gnt_white"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="22dp"
+                        android:layout_height="15dp"
+                        android:layout_gravity="bottom"
+                        android:layout_marginStart="6dip"
+                        android:background="@drawable/ad_text"
+                        android:gravity="center"
+                        android:text="Ad"
+                        android:textColor="#FA3C41"
+                        android:textSize="9sp"
+                        android:textStyle="bold" />
+                </FrameLayout>
+            </LinearLayout>
+
+            <com.bobdrama.bobdrama_app.ShimmerButton
+                android:id="@+id/ad_call_to_action"
+                android:layout_width="100dp"
+                android:layout_height="38dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginHorizontal="4dp"
+                android:background="@drawable/bg_button_ads"
+                android:gravity="center"
+                android:text="Install"
+                android:textAllCaps="false"
+                android:textColor="@color/gnt_white"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </RelativeLayout>
+</com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView>
