@@ -1,0 +1,250 @@
+1
+00:00:00,250 --> 00:00:00,666
+Non !
+
+2
+00:00:01,791 --> 00:00:02,750
+Maintenant que j’ai
+Je t’ai donné à manger
+
+3
+00:00:02,750 --> 00:00:03,583
+Rentre chez toi !
+
+4
+00:00:03,583 --> 00:00:05,000
+Tes parents doivent s’inquiéter pour toi,
+
+5
+00:00:05,000 --> 00:00:05,583
+Toi !
+
+6
+00:00:06,000 --> 00:00:08,083
+Oh non, laisse-moi rester ici...
+
+7
+00:00:08,333 --> 00:00:09,250
+Non, je ne veux pas savoir,
+
+8
+00:00:09,250 --> 00:00:10,708
+Allez, tu as
+Pour rentrer à la maison,
+
+9
+00:00:10,708 --> 00:00:11,375
+Vas-y !
+
+10
+00:00:11,416 --> 00:00:12,458
+Non!
+
+11
+00:00:12,458 --> 00:00:14,666
+Une mauvaise femme
+Tu veux m’attraper
+
+12
+00:00:14,666 --> 00:00:16,916
+Tu ne peux pas lui laisser le savoir
+
+13
+00:00:16,916 --> 00:00:18,875
+Je suis là, s’il vous plaît.
+
+14
+00:00:19,041 --> 00:00:20,875
+Aidez-moi, s’il vous plaît.
+
+15
+00:00:20,875 --> 00:00:22,208
+<i>Mauvaise femme ?</i>
+
+16
+00:00:23,000 --> 00:00:25,000
+<i>Essaient-ils de l’enlever ?</i>
+
+17
+00:00:25,916 --> 00:00:27,750
+<i>Oh mon Dieu, comme j’étais mauvais !</i>
+
+18
+00:00:27,750 --> 00:00:28,958
+Je suis désolé, d’accord ?
+
+19
+00:00:28,958 --> 00:00:30,291
+La tante te protégera.
+
+20
+00:00:30,291 --> 00:00:31,833
+Je ne laisserai aucune mauvaise femme t’attraper.
+
+21
+00:00:35,250 --> 00:00:35,958
+Bonjour...
+
+22
+00:00:37,041 --> 00:00:38,250
+Désolé de déranger.
+
+23
+00:00:38,750 --> 00:00:39,875
+Y a-t-il quelqu’un ?
+
+24
+00:00:39,875 --> 00:00:40,958
+N’est-ce pas ?
+
+25
+00:00:40,958 --> 00:00:43,291
+C’est juste que mon fils a couru dans la rue
+
+26
+00:00:44,458 --> 00:00:46,875
+Il n’est pas là avec toi ?
+
+27
+00:00:47,000 --> 00:00:47,916
+Oh mon Dieu,
+
+28
+00:00:47,916 --> 00:00:49,541
+Est-ce que c’est ça
+La mauvaise femme ?
+
+29
+00:00:50,458 --> 00:00:52,166
+Mais si cet enfant
+Tu mens ?
+
+30
+00:00:53,416 --> 00:00:54,291
+Non !
+
+31
+00:00:55,125 --> 00:00:56,250
+Y a-t-il quelqu’un ?
+
+32
+00:00:58,000 --> 00:00:59,208
+Mon enfant est-il là ?
+
+33
+00:00:59,541 --> 00:01:01,625
+Non, non, je ne le sais pas
+Je n’ai vu aucun enfant
+
+34
+00:01:02,375 --> 00:01:02,958
+Ah...
+
+35
+00:01:04,166 --> 00:01:05,375
+Je pars déjà, alors.
+
+36
+00:01:12,625 --> 00:01:14,333
+Hé, dis la vérité.
+
+37
+00:01:14,416 --> 00:01:15,833
+Cette femme était
+derrière toi ?
+
+38
+00:01:16,416 --> 00:01:16,958
+Oui !
+
+39
+00:01:17,875 --> 00:01:18,750
+Elle est maléfique.
+
+40
+00:01:18,750 --> 00:01:19,666
+Mais pourquoi ?
+
+41
+00:01:21,000 --> 00:01:21,416
+Ce n’est pas grave.
+
+42
+00:01:21,416 --> 00:01:22,958
+Mais tu as quelqu’un
+que je peux appeler ?
+
+43
+00:01:23,333 --> 00:01:24,166
+Mon père !
+
+44
+00:01:24,791 --> 00:01:25,458
+Murilo...
+
+45
+00:01:25,458 --> 00:01:27,083
+D’accord, tu connais son numéro de téléphone ?
+
+46
+00:01:27,500 --> 00:01:28,708
+Mets ici que je
+Je vais l’appeler
+
+47
+00:01:28,708 --> 00:01:29,708
+Je suis venu te chercher, d’accord ?
+
+48
+00:01:30,708 --> 00:01:31,125
+Allô ?
+
+49
+00:01:31,125 --> 00:01:31,916
+Monsieur Murilo ?
+
+50
+00:01:32,333 --> 00:01:33,416
+Oui, qui parle ?
+
+51
+00:01:33,416 --> 00:01:34,541
+Salut, papa !
+
+52
+00:01:34,541 --> 00:01:35,166
+Fils ?
+
+53
+00:01:35,666 --> 00:01:37,083
+Que fais-tu avec mon enfant ?
+
+54
+00:01:37,083 --> 00:01:38,625
+Oui, c’est votre enfant.
+
+55
+00:01:38,625 --> 00:01:39,500
+Il semble qu’il se soit enfui.
+
+56
+00:01:39,500 --> 00:01:41,041
+Mais ce n’est pas grave
+avec lui, d’accord ?
+
+57
+00:01:41,041 --> 00:01:42,125
+Tu peux venir la chercher ?
+
+58
+00:01:42,125 --> 00:01:43,083
+Il est ici à la maison.
+
+59
+00:01:43,375 --> 00:01:44,750
+Fais la première
+Retourne, chauffeur.
+
+60
+00:01:44,750 --> 00:01:45,416
+Vite !
