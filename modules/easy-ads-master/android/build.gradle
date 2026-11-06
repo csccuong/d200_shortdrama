@@ -1,0 +1,49 @@
+group 'com.cscmobi.easy_ads_flutter'
+version '1.0.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.11.1'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.0"
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    namespace 'com.cscmobi.easy_ads_flutter'
+}
+
+dependencies {
+    implementation 'androidx.annotation:annotation:1.9.1'
+}
+
+rootProject.allprojects {
+    ext.set("dart-defines", "USE_NEXT_GEN_SDK=true".bytes.encodeBase64().toString())
+    configurations.configureEach {
+        exclude group: "com.google.android.gms", module: "play-services-ads"
+        exclude group: "com.google.android.gms", module: "play-services-ads-lite"
+        exclude group: "com.google.android.gms", module: "play-services-ads-base"
+        exclude group: "com.google.android.gms", module: "play-services-ads-api"
+    }
+}
