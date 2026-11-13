@@ -34,9 +34,9 @@ class AppConstants {
   }
 
   // GSM & Adjust Constants (replace with project-specific tokens in production)
-  static const String gsmAppId = '';
-  static const String adjustToken = '';
-  static const String adjustIapToken = '';
+  static const String gsmAppId = '6af6905edfe0a3aefe4cb0e7';
+  static const String adjustToken = 'den3ocinh4ao';
+  static const String adjustIapToken = 'ua8nmv';
 
   static final ValueNotifier<bool> isPremiumUser = ValueNotifier<bool>(false)
     ..addListener(() {

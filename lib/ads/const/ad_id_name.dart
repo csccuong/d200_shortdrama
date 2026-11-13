@@ -11,11 +11,11 @@ class MyAdIdName {
     if (isProd) {
       return isIOS
           ? 'ca-app-pub-3940256099942544~1458002511'
-          : 'ca-app-pub-3940256099942544~3347511713';
+          : 'ca-app-pub-9900730300733887~9617844331';
     }
     return isIOS
         ? 'ca-app-pub-3940256099942544~1458002511'
-        : 'ca-app-pub-3940256099942544~3347511713';
+        : 'ca-app-pub-9900730300733887~9617844331';
   }
 
   static const String appOpenResume = 'appOpenResume';
@@ -33,11 +33,8 @@ class MyAdIdName {
   static const String interAll = 'interAll';
   static const String nativeFull = 'nativeFull';
   static const String rewardedAd = 'rewardedAd';
-  static const String nativeBanner = 'nativeBanner';
   static const String interOnboard = 'interOnboard';
-  static const String nativeHome = 'nativeHome';
   static const String nativeAll = 'nativeAll';
-  static const String nativeDramaPopup = 'nativeDramaPopup';
   static const String nativeCollap = 'nativeCollap';
   static const String bannerAll = 'bannerAll';
   static const String nativePip = 'nativePip';

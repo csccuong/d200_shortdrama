@@ -164,7 +164,7 @@ Add the AdMob App ID ([identified in the AdMob UI](https://support.google.com/ad
     <application>
         <meta-data android:name="applovin.sdk.key"
             android:value="YOUR_SDK_KEY"/>
-        <!-- Sample AdMob App ID: ca-app-pub-3940256099942544~3347511713 -->
+        <!-- Sample AdMob App ID: ca-app-pub-9900730300733887~9617844331 -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy"/>
@@ -191,7 +191,7 @@ class TestAdIdManager extends IAdIdManager {
   @override
   AppAdIds? get admobAdIds => AppAdIds(
     appId: Platform.isAndroid
-        ? 'ca-app-pub-3940256099942544~3347511713'
+        ? 'ca-app-pub-9900730300733887~9617844331'
         : 'ca-app-pub-3940256099942544~1458002511',
     appOpenId: Platform.isAndroid
         ? 'ca-app-pub-3940256099942544/3419835294'
