@@ -139,27 +139,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
       }).toList();
     }
 
-    return [
-      RewardVipPackage(
-        productId: 'dxx_vip_weekly',
-        planKey: 'vip_weekly_name',
-        title: locale.tr('reward_plan_weekly'),
-        price: '4.99\$',
-      ),
-      RewardVipPackage(
-        productId: 'dxx_vip_monthly',
-        planKey: 'vip_monthly_name',
-        title: locale.tr('reward_plan_monthly'),
-        price: '9.99\$',
-        discountBadge: locale.tr('reward_save_30'),
-      ),
-      RewardVipPackage(
-        productId: 'dxx_vip_yearly',
-        planKey: 'vip_annual_name',
-        title: locale.tr('reward_plan_yearly'),
-        price: '29.99\$',
-      ),
-    ];
+    return const [];
   }
 
   Future<void> _verifyPurchase({
@@ -342,8 +322,9 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
     final overview = rewardsState?.overview;
     final vipPackages =
         _resolveVipPackages(accountState.iapCatalog, locale);
-    final safePlanIdx =
-        _selectedPlanIndex.clamp(0, vipPackages.length - 1);
+    final safePlanIdx = vipPackages.isEmpty
+        ? 0
+        : _selectedPlanIndex.clamp(0, vipPackages.length - 1);
     final coinPacks = accountState.iapCatalog?.coinPackages ?? const [];
 
     final vipDramas = _vipDramas.isNotEmpty ? _vipDramas : homeVip;
@@ -501,85 +482,87 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                   ],
                 ),
 
-                SizedBox(height: 20.h),
+                if (vipPackages.isNotEmpty) ...[
+                  SizedBox(height: 20.h),
 
-                // 2. VIP Subscription Package Cards
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: Row(
-                    children: List.generate(
-                      vipPackages.length.clamp(0, 3),
-                      (idx) {
-                        final pkg = vipPackages[idx];
-                        final isSelected = idx == safePlanIdx;
-                        return Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              right: idx <
-                                      (vipPackages.length.clamp(0, 3) - 1)
-                                  ? 10.w
-                                  : 0,
-                            ),
-                            child: _VipPackageCard(
-                              package: pkg,
-                              isSelected: isSelected,
-                              onTap: () =>
-                                  setState(() => _selectedPlanIndex = idx),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-                SizedBox(height: 16.h),
-
-                // 3. Full-Width Red Gradient "Continue" CTA
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16.w),
-                  child: GestureDetector(
-                    onTap: accountState.isPurchasing
-                        ? null
-                        : () {
-                            final pkg = vipPackages[safePlanIdx];
-                            unawaited(
-                              _verifyPurchase(
-                                productId: pkg.productId,
-                                title: pkg.title,
-                                priceLabel: pkg.price,
-                                locale: locale,
+                  // 2. VIP Subscription Package Cards
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: Row(
+                      children: List.generate(
+                        vipPackages.length.clamp(0, 3),
+                        (idx) {
+                          final pkg = vipPackages[idx];
+                          final isSelected = idx == safePlanIdx;
+                          return Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: idx <
+                                        (vipPackages.length.clamp(0, 3) - 1)
+                                    ? 10.w
+                                    : 0,
                               ),
-                            );
-                          },
-                    child: Container(
-                      width: double.infinity,
-                      height: 50.h,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        gradient: AppColors.primaryGradient,
-                        borderRadius: BorderRadius.circular(26.r),
-                        border: Border.all(
-                          color: AppColors.textPrimary.withValues(alpha: 0.16),
-                          width: 0.8,
-                        ),
+                              child: _VipPackageCard(
+                                package: pkg,
+                                isSelected: isSelected,
+                                onTap: () =>
+                                    setState(() => _selectedPlanIndex = idx),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                      child: accountState.isPurchasing
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.textPrimary,
-                              ),
-                            )
-                          : Text(
-                              locale.tr('reward_continue_btn'),
-                              style: AppTextStyles.rewardContinueBtn,
-                            ),
                     ),
                   ),
-                ),
+
+                  SizedBox(height: 16.h),
+
+                  // 3. Full-Width Red Gradient "Continue" CTA
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: GestureDetector(
+                      onTap: accountState.isPurchasing
+                          ? null
+                          : () {
+                              final pkg = vipPackages[safePlanIdx];
+                              unawaited(
+                                _verifyPurchase(
+                                  productId: pkg.productId,
+                                  title: pkg.title,
+                                  priceLabel: pkg.price,
+                                  locale: locale,
+                                ),
+                              );
+                            },
+                      child: Container(
+                        width: double.infinity,
+                        height: 50.h,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(26.r),
+                          border: Border.all(
+                            color: AppColors.textPrimary.withValues(alpha: 0.16),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: accountState.isPurchasing
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.textPrimary,
+                                ),
+                              )
+                            : Text(
+                                locale.tr('reward_continue_btn'),
+                                style: AppTextStyles.rewardContinueBtn,
+                              ),
+                      ),
+                    ),
+                  ),
+                ],
 
                 // 4. Coin Packages Section (if IAP catalog loaded)
                 if (coinPacks.isNotEmpty) ...[

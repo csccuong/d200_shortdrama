@@ -276,21 +276,15 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
 
   void _openFilterSheet(Taxonomy? taxonomy, LocaleState locale) {
     final categories = <({String slug, String name})>[
-      (slug: 'all', name: locale.tr('all_categories')),
-      if (taxonomy != null)
+      if (taxonomy != null && taxonomy.categories.isNotEmpty) ...[
+        (slug: 'all', name: locale.tr('all_categories')),
         ...taxonomy.categories.map((c) => (slug: c.slug, name: c.name)),
+      ],
     ];
     final countries = taxonomy?.facets.countries ?? const <FacetCountry>[];
     final regions = taxonomy?.facets.regions ?? const <FacetRegion>[];
     final audioModes = taxonomy?.facets.audioModes ?? const <FacetAudioMode>[];
-    final sorts = (taxonomy?.facets.sorts.isNotEmpty ?? false)
-        ? taxonomy!.facets.sorts
-        : [
-            FacetSort(code: 'popular', name: locale.tr('sort_popular')),
-            FacetSort(code: 'rating', name: locale.tr('sort_rating')),
-            FacetSort(code: 'latest', name: locale.tr('tab_new')),
-            FacetSort(code: 'trending', name: locale.tr('trending_now')),
-          ];
+    final sorts = taxonomy?.facets.sorts ?? const <FacetSort>[];
 
     final bottomInset = AppScreenUtils.bottomSafeInset(context);
     showModalBottomSheet<void>(
@@ -490,24 +484,26 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
                         ],
                       ),
                     ],
-                    SizedBox(height: 14.h),
-                    Text(locale.tr('filter_sort'), style: AppTextStyles.caption),
-                    SizedBox(height: 8.h),
-                    Wrap(
-                      spacing: 8.w,
-                      runSpacing: 8.h,
-                      children: sorts.map((opt) {
-                        return _FilterSheetChip(
-                          label: opt.name,
-                          active: _sortBy == opt.code,
-                          onTap: () {
-                            setState(() => _sortBy = opt.code);
-                            setSheetState(() {});
-                            unawaited(_loadAllDramas(reset: true));
-                          },
-                        );
-                      }).toList(),
-                    ),
+                    if (sorts.isNotEmpty) ...[
+                      SizedBox(height: 14.h),
+                      Text(locale.tr('filter_sort'), style: AppTextStyles.caption),
+                      SizedBox(height: 8.h),
+                      Wrap(
+                        spacing: 8.w,
+                        runSpacing: 8.h,
+                        children: sorts.map((opt) {
+                          return _FilterSheetChip(
+                            label: opt.name,
+                            active: _sortBy == opt.code,
+                            onTap: () {
+                              setState(() => _sortBy = opt.code);
+                              setSheetState(() {});
+                              unawaited(_loadAllDramas(reset: true));
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ],
                 ),
               ),

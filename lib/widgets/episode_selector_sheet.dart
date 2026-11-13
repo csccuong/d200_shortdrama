@@ -49,9 +49,7 @@ class _EpisodeSelectorSheetState extends ConsumerState<EpisodeSelectorSheet> {
     if (item != null) {
       return !item.isLocked && (item.isUnlocked || item.isFreeTier);
     }
-    final freeCount =
-        widget.drama.freeEpisodesCount > 0 ? widget.drama.freeEpisodesCount : 5;
-    return epNo <= freeCount;
+    return epNo <= widget.drama.freeEpisodesCount;
   }
 
   @override

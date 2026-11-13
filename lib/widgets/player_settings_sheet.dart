@@ -41,6 +41,28 @@ class PlayerSettingsSheet extends ConsumerWidget {
     final wallet = ref.watch(userWalletProvider);
     final walletNotifier = ref.read(userWalletProvider.notifier);
     final bottomInset = AppScreenUtils.bottomSafeInset(context);
+    final rawSubLangs = availableSubLangs ?? const <String>[];
+    final seenSubCodes = <String>{};
+    final displaySubOptions = <LanguageOption>[];
+    for (final raw in rawSubLangs) {
+      final code = raw.trim().toLowerCase();
+      if (code.isEmpty || !seenSubCodes.add(code)) continue;
+      LanguageOption? matched;
+      for (final o in AppStrings.supportedLanguages) {
+        if (o.code.toLowerCase() == code) {
+          matched = o;
+          break;
+        }
+      }
+      displaySubOptions.add(
+        matched ??
+            LanguageOption(
+              code: code,
+              name: code.toUpperCase(),
+              flag: '🌐',
+            ),
+      );
+    }
 
     return Material(
       color: AppColors.surfaceSheet,
@@ -133,7 +155,7 @@ class PlayerSettingsSheet extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  if (locale.subtitlesEnabled) ...[
+                  if (locale.subtitlesEnabled && displaySubOptions.isNotEmpty) ...[
                     Divider(color: AppColors.divider, height: 14.h),
                     Text(
                       locale.tr('subtitle_language'),
@@ -142,40 +164,26 @@ class PlayerSettingsSheet extends ConsumerWidget {
                     SizedBox(height: 8.h),
                     SizedBox(
                       height: 34.h,
-                      child: Builder(
-                        builder: (context) {
-                          final langOptions = (availableSubLangs != null &&
-                                  availableSubLangs!.isNotEmpty)
-                              ? AppStrings.supportedLanguages
-                                  .where((o) => availableSubLangs!
-                                      .any((c) =>
-                                          c.toLowerCase() ==
-                                          o.code.toLowerCase()))
-                                  .toList()
-                              : AppStrings.supportedLanguages;
-                          final displayOptions = langOptions.isNotEmpty
-                              ? langOptions
-                              : AppStrings.supportedLanguages;
-                          return ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            physics: AppScreenUtils.adaptiveScrollPhysics,
-                            itemCount: displayOptions.length,
-                            separatorBuilder: (_, _) => SizedBox(width: 8.w),
-                            itemBuilder: (context, idx) {
-                              final opt = displayOptions[idx];
-                              final isSelected =
-                                  opt.code == locale.subtitleLanguage;
-                              return GestureDetector(
-                                onTap: () {
-                                  localeNotifier.setSubtitleLanguage(opt.code);
-                                  unawaited(
-                                    ref
-                                        .read(accountProvider.notifier)
-                                        .updateSettings(
-                                          subtitleLanguage: opt.code,
-                                        ),
-                                  );
-                                },
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: AppScreenUtils.adaptiveScrollPhysics,
+                        itemCount: displaySubOptions.length,
+                        separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                        itemBuilder: (context, idx) {
+                          final opt = displaySubOptions[idx];
+                          final isSelected =
+                              opt.code == locale.subtitleLanguage;
+                          return GestureDetector(
+                            onTap: () {
+                              localeNotifier.setSubtitleLanguage(opt.code);
+                              unawaited(
+                                ref
+                                    .read(accountProvider.notifier)
+                                    .updateSettings(
+                                      subtitleLanguage: opt.code,
+                                    ),
+                              );
+                            },
                             child: Container(
                               padding: EdgeInsets.symmetric(horizontal: 11.w),
                               alignment: Alignment.center,
@@ -205,8 +213,6 @@ class PlayerSettingsSheet extends ConsumerWidget {
                                 ],
                               ),
                             ),
-                          );
-                            },
                           );
                         },
                       ),
