@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../ads/const/ad_id_extension.dart';
@@ -85,10 +84,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   bool _isEpisodeSheetOpen = false;
   bool _hasRequestedPlay = false;
   int _lastTickEmitSec = -1;
-
-  int? _likeCountOverride;
-  bool? _isLikedOverride;
-  int? _shareCountOverride;
 
   @override
   void initState() {
@@ -463,70 +458,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   //   }
   // }
 
-  Future<void> _handleLike() async {
-    final currentCount = _likeCountOverride ?? widget.drama.likeCount;
-
-    final result = await ref.read(mylistProvider.notifier).toggleLike(
-          widget.drama.dramaId,
-          currentLikeCount: currentCount,
-          episodeNumber: widget.showFullDramaButton ? 0 : widget.episodeNo,
-        );
-    if (!mounted) return;
-    setState(() {
-      _isLikedOverride = result.isLiked;
-      _likeCountOverride = result.likeCount;
-    });
-    if (widget.showFullDramaButton && result.isLiked) {
-      ref.read(feedProvider.notifier).trackEvent(widget.drama.dramaId, 'like');
-    }
-  }
-
-  Future<void> _handleShare() async {
-    final shareUrl =
-        'https://dramota.com/drama/${widget.drama.dramaId}?ep=${widget.episodeNo}';
-    await Clipboard.setData(
-      ClipboardData(text: '${widget.drama.title} - $shareUrl'),
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${widget.drama.title} link copied'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
-    try {
-      final res = await ref.read(dramaApiServiceProvider).shareDrama(
-            widget.drama.dramaId,
-            channel: 'copy_link',
-            episodeNumber: widget.episodeNo,
-          );
-      if (mounted) {
-        setState(() => _shareCountOverride = res.shareCount);
-      }
-      ref.read(eventTrackerProvider).track(
-        'drama_share',
-        dramaId: widget.drama.dramaId,
-        episodeNumber: widget.episodeNo,
-        sourceScreen: widget.sourceScreen,
-      );
-      if (widget.showFullDramaButton) {
-        ref
-            .read(feedProvider.notifier)
-            .trackEvent(widget.drama.dramaId, 'share');
-      }
-    } catch (_) {
-      // Non-fatal analytics/share call
-    }
-  }
-
-  String _formatCount(int n) {
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
-    return n > 0 ? '$n' : '';
-  }
-
   void _disposeController() {
     final ctrl = _controller;
     _controller = null;
@@ -591,15 +522,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       ),
     ) ||
         widget.drama.isFavorited;
-    final isLiked = _isLikedOverride ??
-        (ref.watch(
-              mylistProvider.select(
-                (s) => s.likedIds.contains(widget.drama.dramaId),
-              ),
-            ) ||
-            widget.drama.isLiked);
-    final likeCount = _likeCountOverride ?? widget.drama.likeCount;
-    final shareCount = _shareCountOverride ?? widget.drama.shareCount;
 
     final langOpt = AppStrings.getLanguageOption(locale.subtitleLanguage);
     final bottomPad =
@@ -715,27 +637,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                     }
                   },
                 ),
-                SizedBox(height: 11.h),
-                _ActionIconButton(
-                  icon: isLiked
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  iconColor:
-                      isLiked ? AppColors.primaryBright : AppColors.textPrimary,
-                  label: _formatCount(likeCount).isNotEmpty
-                      ? _formatCount(likeCount)
-                      : 'Like',
-                  onTap: _handleLike,
-                ),
-                SizedBox(height: 11.h),
-                _ActionIconButton(
-                  icon: Icons.share_rounded,
-                  label: _formatCount(shareCount).isNotEmpty
-                      ? _formatCount(shareCount)
-                      : 'Share',
-                  onTap: _handleShare,
-                ),
-                SizedBox(height: 11.h),
+                SizedBox(height: 15.h),
                 if (widget.onOpenEpisodeList != null) ...[
                   _ActionIconButton(
                     iconAsset:
@@ -743,7 +645,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                     label: '$totalEps ${locale.tr('player_eps_short')}',
                     onTap: _handleOpenEpisodeList,
                   ),
-                  SizedBox(height: 11.h),
+                  SizedBox(height: 15.h),
                 ],
                 _ActionIconButton(
                   iconAsset:
@@ -758,7 +660,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   onLongPress: () =>
                       ref.read(localeProvider.notifier).toggleSubtitlesEnabled(),
                 ),
-                SizedBox(height: 11.h),
+                SizedBox(height: 15.h),
                 _ActionIconButton(
                   icon: Icons.speed_rounded,
                   label: _formatSpeed(playbackSpeed),
@@ -1085,7 +987,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
 class _ActionIconButton extends StatelessWidget {
   final String? iconAsset;
   final IconData? icon;
-  final Color iconColor;
   final String label;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -1093,7 +994,6 @@ class _ActionIconButton extends StatelessWidget {
   const _ActionIconButton({
     this.iconAsset,
     this.icon,
-    this.iconColor = AppColors.textPrimary,
     required this.label,
     required this.onTap,
     this.onLongPress,
@@ -1116,14 +1016,14 @@ class _ActionIconButton extends StatelessWidget {
                 child: iconAsset != null
                     ? Image.asset(
                         iconAsset!,
-                        width: 40.w,
-                        height: 40.w,
+                        width: 42.w,
+                        height: 42.w,
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
                       )
                     : Container(
-                        width: 40.w,
-                        height: 40.w,
+                        width: 42.w,
+                        height: 42.w,
                         alignment: Alignment.center,
                         decoration: const BoxDecoration(
                           color: AppColors.playerGlassCircle,
@@ -1131,13 +1031,13 @@ class _ActionIconButton extends StatelessWidget {
                         ),
                         child: Icon(
                           icon,
-                          color: iconColor,
-                          size: 20.sp,
+                          color: AppColors.textPrimary,
+                          size: 21.sp,
                         ),
                       ),
               ),
             ),
-            SizedBox(height: 4.h),
+            SizedBox(height: 5.h),
             Text(
               label,
               maxLines: 1,
