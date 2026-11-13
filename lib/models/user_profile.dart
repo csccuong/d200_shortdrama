@@ -85,6 +85,40 @@ class UserProfile {
     UserSettings? settings,
   }) : settings = settings ?? UserSettings();
 
+  UserProfile copyWith({
+    UserSettings? settings,
+    String? displayName,
+    String? avatarUrl,
+    String? gender,
+    int? birthYear,
+  }) {
+    return UserProfile(
+      userUid: userUid,
+      deviceId: deviceId,
+      authProvider: authProvider,
+      isGuest: isGuest,
+      email: email,
+      displayName: displayName ?? this.displayName,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      gender: gender ?? this.gender,
+      birthYear: birthYear ?? this.birthYear,
+      isVip: isVip,
+      vipExpiresAt: vipExpiresAt,
+      coinBalance: coinBalance,
+      bonusCoinBalance: bonusCoinBalance,
+      totalCoins: totalCoins,
+      adUnlocksUsedToday: adUnlocksUsedToday,
+      adUnlocksRemainingToday: adUnlocksRemainingToday,
+      todayWatchSeconds: todayWatchSeconds,
+      checkinStreak: checkinStreak,
+      canCheckinToday: canCheckinToday,
+      favoritesCount: favoritesCount,
+      watchLaterCount: watchLaterCount,
+      watchedDramasCount: watchedDramasCount,
+      settings: settings ?? this.settings,
+    );
+  }
+
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     final stats = json['stats'] as Map<String, dynamic>?;
     return UserProfile(

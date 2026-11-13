@@ -131,6 +131,13 @@ class AccountNotifier extends Notifier<AccountState> {
       videoQuality: videoQuality ?? prev.videoQuality,
       wifiOnly: wifiOnly ?? prev.wifiOnly,
     );
+    if (state.profile != null) {
+      state = state.copyWith(profile: state.profile!.copyWith(settings: next));
+    }
+    ref.read(userWalletProvider.notifier).syncFromApi(
+          isVip: state.profile?.isVip ?? AppConstants.isPremiumUser.value,
+          autoPlayNext: next.autoPlayNext,
+        );
     try {
       await _service.updateSettings(next);
     } catch (e) {

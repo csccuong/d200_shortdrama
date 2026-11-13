@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
 import '../../core/utils/screen_utils.dart';
-import '../../widgets/bottom_native_all_ad.dart';
-import '../../models/drama_models.dart';
+import '../../models/drama_card.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/bottom_native_all_ad.dart';
+import '../../widgets/drama_network_image.dart';
 import '../player/drama_player_screen.dart';
 
 class WatchlistScreen extends ConsumerStatefulWidget {
@@ -16,12 +18,64 @@ class WatchlistScreen extends ConsumerStatefulWidget {
 
 class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   final PageController _pageController = PageController();
-  int _selectedTab = 0;
+  final ScrollController _favScrollCtrl = ScrollController();
+  final ScrollController _historyScrollCtrl = ScrollController();
+  int _selectedTab = 0; // 0: My List (Favorites) | 1: Watch Later | 2: History
+  bool _didInitialLoad = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _favScrollCtrl.addListener(_onFavScroll);
+    _historyScrollCtrl.addListener(_onHistoryScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didInitialLoad) return;
+      _didInitialLoad = true;
+      _refreshAllListsIfSessionReady();
+    });
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _favScrollCtrl.dispose();
+    _historyScrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _refreshAllListsIfSessionReady() {
+    final ready =
+        ref.read(sessionProvider).asData?.value.isInitialized ?? false;
+    if (!ready) return;
+    final lang = ref.read(localeProvider).appLanguage;
+    final notifier = ref.read(mylistProvider.notifier);
+    unawaited(notifier.fetchFavorites(lang: lang));
+    unawaited(notifier.fetchWatchLater(lang: lang));
+    unawaited(notifier.fetchHistory(lang: lang));
+  }
+
+  void _onFavScroll() {
+    if (!_favScrollCtrl.hasClients) return;
+    if (_favScrollCtrl.position.pixels >=
+        _favScrollCtrl.position.maxScrollExtent - 260) {
+      unawaited(
+        ref
+            .read(mylistProvider.notifier)
+            .loadMoreFavorites(lang: ref.read(localeProvider).appLanguage),
+      );
+    }
+  }
+
+  void _onHistoryScroll() {
+    if (!_historyScrollCtrl.hasClients) return;
+    if (_historyScrollCtrl.position.pixels >=
+        _historyScrollCtrl.position.maxScrollExtent - 260) {
+      unawaited(
+        ref
+            .read(mylistProvider.notifier)
+            .loadMoreHistory(lang: ref.read(localeProvider).appLanguage),
+      );
+    }
   }
 
   void _selectTab(int index) {
@@ -34,13 +88,22 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     );
   }
 
-  void _openDrama(Drama drama, int epNo) {
+  void _openDrama(DramaCard drama, {int? episodeNo, int? positionSec}) {
+    final cw = drama.continueWatching;
+    final ep = episodeNo ?? ((cw?.episodeNumber ?? 0) > 0 ? cw!.episodeNumber : 1);
+    final pos = positionSec ?? (cw?.positionSec ?? 0);
+
     showInterAllThen(context, ref, () {
       ref.read(navigationServiceProvider).push(
             context,
             DramaPlayerScreen(
-              drama: drama,
-              initialEpisode: epNo,
+              dramaCard: drama,
+              dramaId: drama.dramaId,
+              initialEpisode: ep,
+              initialPositionSec: pos,
+              sourceScreen: _selectedTab == 2
+                  ? 'history'
+                  : (_selectedTab == 1 ? 'watch_later' : 'my_list'),
             ),
           );
     });
@@ -52,20 +115,9 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final catalogAsync = ref.watch(catalogProvider);
-    final watchlist = ref.watch(watchlistProvider);
+    final mylist = ref.watch(mylistProvider);
     final locale = ref.watch(localeProvider);
-    final allDramas = catalogAsync.asData?.value ?? [];
-
-    final favorites =
-        allDramas.where((d) => watchlist.isFavorite(d.slug)).toList();
-    final history = <MapEntry<Drama, int>>[];
-    for (final entry in watchlist.watchHistory.entries) {
-      final match = allDramas.where((d) => d.slug == entry.key);
-      if (match.isNotEmpty) {
-        history.add(MapEntry(match.first, entry.value));
-      }
-    }
+    final lang = locale.appLanguage;
 
     return ColoredBox(
       color: AppColors.background,
@@ -73,9 +125,9 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
         bottom: false,
         child: Column(
           children: [
-            // Top Minimalist 2-Column Tab Bar: "My List" | "History"
+            // Top 3-Column Tab Bar: "My List" | "Watch Later" | "History"
             Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 8.h),
               child: Row(
                 children: [
                   Expanded(
@@ -87,9 +139,16 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                   ),
                   Expanded(
                     child: _WatchlistTopTab(
-                      label: locale.tr('tab_history'),
+                      label: locale.tr('saved'),
                       isSelected: _selectedTab == 1,
                       onTap: () => _selectTab(1),
+                    ),
+                  ),
+                  Expanded(
+                    child: _WatchlistTopTab(
+                      label: locale.tr('tab_history'),
+                      isSelected: _selectedTab == 2,
+                      onTap: () => _selectTab(2),
                     ),
                   ),
                 ],
@@ -107,218 +166,392 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                   }
                 },
                 children: [
-                  // Page 0: My List
-                  favorites.isEmpty
-                      ? _WatchlistEmptyView(
-                          imageAsset: 'assets/images/empty_mylist.png',
-                          title: locale.tr('empty_mylist_title'),
-                          subtitle: locale.tr('empty_mylist_desc'),
-                          ctaLabel: locale.tr('explore_dramas_btn'),
-                          onExplore: _exploreDramas,
-                        )
-                      : GridView.builder(
-                          padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
-                          physics: AppScreenUtils.adaptiveScrollPhysics,
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount:
-                                AppScreenUtils.watchlistGridColumns(context),
-                            mainAxisSpacing: 14.h,
-                            crossAxisSpacing: 12.w,
-                            childAspectRatio: 0.58,
-                          ),
-                          itemCount: favorites.length,
-                          itemBuilder: (context, idx) {
-                            final d = favorites[idx];
-                            final lastEp =
-                                watchlist.getLastWatchedEpisode(d.slug);
-                            return GestureDetector(
-                              onTap: () => _openDrama(d, lastEp),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(10.r),
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          Image.asset(
-                                            d.posterAssetPath,
-                                            fit: BoxFit.cover,
-                                          ),
-                                          Positioned(
-                                            top: 5.h,
-                                            right: 5.w,
-                                            child: GestureDetector(
-                                              onTap: () => ref
-                                                  .read(watchlistProvider
-                                                      .notifier)
-                                                  .toggleFavorite(d.slug),
-                                              child: Container(
-                                                padding: EdgeInsets.all(5.w),
-                                                decoration: const BoxDecoration(
-                                                  color: AppColors.overlayDark,
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: Icon(
-                                                  Icons.bookmark_rounded,
-                                                  color:
-                                                      AppColors.primaryBright,
-                                                  size: 15.sp,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(height: 6.h),
-                                  Text(
-                                    locale.dramaTitle(d),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.continueCardTitle,
-                                  ),
-                                  SizedBox(height: 2.h),
-                                  Text(
-                                    '${locale.tr('episode_prefix')} $lastEp / ${d.totalEpisodes}',
-                                    style: AppTextStyles.continueEpisodeText,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                  // Page 1: History
-                  history.isEmpty
-                      ? _WatchlistEmptyView(
-                          imageAsset: 'assets/images/empty_history.png',
-                          title: locale.tr('empty_history_title'),
-                          subtitle: locale.tr('empty_history_desc'),
-                          ctaLabel: locale.tr('explore_dramas_btn'),
-                          onExplore: _exploreDramas,
-                        )
-                      : Column(
-                          children: [
-                            Padding(
-                              padding:
-                                  EdgeInsets.fromLTRB(16.w, 4.h, 12.w, 0.h),
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: TextButton.icon(
-                                  onPressed: () => ref
-                                      .read(watchlistProvider.notifier)
-                                      .clearHistory(),
-                                  icon: Icon(
-                                    Icons.delete_sweep_outlined,
-                                    color: AppColors.textMuted,
-                                    size: 17.sp,
-                                  ),
-                                  label: Text(
-                                    locale.tr('clear_history'),
-                                    style: AppTextStyles.caption,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: ListView.separated(
-                                padding:
-                                    EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
-                                physics: AppScreenUtils.adaptiveScrollPhysics,
-                                itemCount: history.length,
-                                separatorBuilder: (_, _) =>
-                                    SizedBox(height: 12.h),
-                                itemBuilder: (context, idx) {
-                                  final entry = history[idx];
-                                  final d = entry.key;
-                                  final ep = entry.value;
-                                  final progress = (ep / d.totalEpisodes)
-                                      .clamp(0.05, 1.0);
-                                  return InkWell(
-                                    onTap: () => _openDrama(d, ep),
-                                    borderRadius: BorderRadius.circular(12.r),
-                                    child: Container(
-                                      padding: EdgeInsets.all(10.w),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.surface,
-                                        borderRadius:
-                                            BorderRadius.circular(12.r),
-                                        border: Border.all(
-                                          color: AppColors.borderSubtle,
-                                        ),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius:
-                                                BorderRadius.circular(8.r),
-                                            child: Image.asset(
-                                              d.posterAssetPath,
-                                              width: 56.w,
-                                              height: 76.h,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                          SizedBox(width: 12.w),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  locale.dramaTitle(d),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style:
-                                                      AppTextStyles.cardTitle,
-                                                ),
-                                                SizedBox(height: 4.h),
-                                                Text(
-                                                  '${locale.tr('continue_ep')} $ep / ${d.totalEpisodes}',
-                                                  style: AppTextStyles
-                                                      .captionAccent,
-                                                ),
-                                                SizedBox(height: 8.h),
-                                                LinearProgressIndicator(
-                                                  value: progress,
-                                                  backgroundColor:
-                                                      AppColors.borderLight,
-                                                  color:
-                                                      AppColors.primaryBright,
-                                                  minHeight: 4.h,
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          2.r),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          SizedBox(width: 12.w),
-                                          Icon(
-                                            Icons.play_circle_fill_rounded,
-                                            color: AppColors.primaryBright,
-                                            size: 32.sp,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
+                  // Page 0: Favorites (My List)
+                  _buildFavoritesPage(mylist, locale, lang),
+                  // Page 1: Watch Later
+                  _buildWatchLaterPage(mylist, locale, lang),
+                  // Page 2: Watch History
+                  _buildHistoryPage(mylist, locale, lang),
                 ],
               ),
             ),
             const BottomNativeAllAd(tabIndex: 2),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFavoritesPage(
+    MyListState mylist,
+    LocaleState locale,
+    String lang,
+  ) {
+    if (mylist.favorites.isEmpty && mylist.isLoadingFavorites) {
+      return const Center(
+        child: CircularProgressIndicator.adaptive(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surfaceCard,
+      onRefresh: () =>
+          ref.read(mylistProvider.notifier).fetchFavorites(lang: lang),
+      child: mylist.favorites.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 0.6.sh,
+                  child: _WatchlistEmptyView(
+                    imageAsset: 'assets/images/empty_mylist.png',
+                    title: locale.tr('empty_mylist_title'),
+                    subtitle: locale.tr('empty_mylist_desc'),
+                    ctaLabel: locale.tr('explore_dramas_btn'),
+                    onExplore: _exploreDramas,
+                  ),
+                ),
+              ],
+            )
+          : GridView.builder(
+              controller: _favScrollCtrl,
+              padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
+              physics: AlwaysScrollableScrollPhysics(
+                parent: AppScreenUtils.adaptiveScrollPhysics,
+              ),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: AppScreenUtils.watchlistGridColumns(context),
+                mainAxisSpacing: 14.h,
+                crossAxisSpacing: 12.w,
+                childAspectRatio: 0.58,
+              ),
+              itemCount: mylist.favorites.length,
+              itemBuilder: (context, idx) {
+                final d = mylist.favorites[idx];
+                final epNo = (d.continueWatching?.episodeNumber ?? 0) > 0
+                    ? d.continueWatching!.episodeNumber
+                    : 1;
+                return _SavedPosterCard(
+                  drama: d,
+                  episodeLabel:
+                      '${locale.tr('episode_prefix')} $epNo / ${d.totalEpisodes > 0 ? d.totalEpisodes : epNo}',
+                  badgeIcon: Icons.bookmark_rounded,
+                  onTap: () => _openDrama(d),
+                  onRemove: () => unawaited(
+                    ref.read(mylistProvider.notifier).toggleFavorite(d),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildWatchLaterPage(
+    MyListState mylist,
+    LocaleState locale,
+    String lang,
+  ) {
+    if (mylist.watchLater.isEmpty && mylist.isLoadingWatchLater) {
+      return const Center(
+        child: CircularProgressIndicator.adaptive(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surfaceCard,
+      onRefresh: () =>
+          ref.read(mylistProvider.notifier).fetchWatchLater(lang: lang),
+      child: mylist.watchLater.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 0.6.sh,
+                  child: _WatchlistEmptyView(
+                    imageAsset: 'assets/images/empty_mylist.png',
+                    title: locale.tr('empty_mylist_title'),
+                    subtitle: locale.tr('empty_mylist_desc'),
+                    ctaLabel: locale.tr('explore_dramas_btn'),
+                    onExplore: _exploreDramas,
+                  ),
+                ),
+              ],
+            )
+          : GridView.builder(
+              padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
+              physics: AlwaysScrollableScrollPhysics(
+                parent: AppScreenUtils.adaptiveScrollPhysics,
+              ),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: AppScreenUtils.watchlistGridColumns(context),
+                mainAxisSpacing: 14.h,
+                crossAxisSpacing: 12.w,
+                childAspectRatio: 0.58,
+              ),
+              itemCount: mylist.watchLater.length,
+              itemBuilder: (context, idx) {
+                final d = mylist.watchLater[idx];
+                final epNo = (d.continueWatching?.episodeNumber ?? 0) > 0
+                    ? d.continueWatching!.episodeNumber
+                    : 1;
+                return _SavedPosterCard(
+                  drama: d,
+                  episodeLabel:
+                      '${locale.tr('episode_prefix')} $epNo / ${d.totalEpisodes > 0 ? d.totalEpisodes : epNo}',
+                  badgeIcon: Icons.watch_later_rounded,
+                  onTap: () => _openDrama(d),
+                  onRemove: () => unawaited(
+                    ref.read(mylistProvider.notifier).toggleWatchLater(d),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildHistoryPage(
+    MyListState mylist,
+    LocaleState locale,
+    String lang,
+  ) {
+    if (mylist.history.isEmpty && mylist.isLoadingHistory) {
+      return const Center(
+        child: CircularProgressIndicator.adaptive(
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      color: AppColors.primary,
+      backgroundColor: AppColors.surfaceCard,
+      onRefresh: () =>
+          ref.read(mylistProvider.notifier).fetchHistory(lang: lang),
+      child: mylist.history.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 0.6.sh,
+                  child: _WatchlistEmptyView(
+                    imageAsset: 'assets/images/empty_history.png',
+                    title: locale.tr('empty_history_title'),
+                    subtitle: locale.tr('empty_history_desc'),
+                    ctaLabel: locale.tr('explore_dramas_btn'),
+                    onExplore: _exploreDramas,
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 4.h, 12.w, 0.h),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () => unawaited(
+                        ref
+                            .read(mylistProvider.notifier)
+                            .deleteHistory(clearAll: true),
+                      ),
+                      icon: Icon(
+                        Icons.delete_sweep_outlined,
+                        color: AppColors.textMuted,
+                        size: 17.sp,
+                      ),
+                      label: Text(
+                        locale.tr('clear_history'),
+                        style: AppTextStyles.caption,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    controller: _historyScrollCtrl,
+                    padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
+                    physics: AlwaysScrollableScrollPhysics(
+                      parent: AppScreenUtils.adaptiveScrollPhysics,
+                    ),
+                    itemCount: mylist.history.length,
+                    separatorBuilder: (_, _) => SizedBox(height: 12.h),
+                    itemBuilder: (context, idx) {
+                      final d = mylist.history[idx];
+                      final cw = d.continueWatching;
+                      final ep = (cw?.episodeNumber ?? 0) > 0
+                          ? cw!.episodeNumber
+                          : 1;
+                      final totalEps = d.totalEpisodes > 0 ? d.totalEpisodes : ep;
+                      final progress = (cw != null && cw.percentWatched > 0)
+                          ? (cw.percentWatched / 100.0).clamp(0.05, 1.0)
+                          : (ep / totalEps).clamp(0.05, 1.0);
+
+                      return Dismissible(
+                        key: ValueKey('history_${d.dramaId}'),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: EdgeInsets.only(right: 20.w),
+                          decoration: BoxDecoration(
+                            color: AppColors.error.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Icon(
+                            Icons.delete_outline_rounded,
+                            color: AppColors.error,
+                            size: 24.sp,
+                          ),
+                        ),
+                        onDismissed: (_) => unawaited(
+                          ref
+                              .read(mylistProvider.notifier)
+                              .deleteHistory(dramaIds: [d.dramaId]),
+                        ),
+                        child: InkWell(
+                          onTap: () => _openDrama(
+                            d,
+                            episodeNo: ep,
+                            positionSec: cw?.positionSec ?? 0,
+                          ),
+                          borderRadius: BorderRadius.circular(12.r),
+                          child: Container(
+                            padding: EdgeInsets.all(10.w),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: AppColors.borderSubtle,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                DramaNetworkImage(
+                                  imageUrl: d.coverUrl,
+                                  width: 56.w,
+                                  height: 76.h,
+                                  borderRadius: BorderRadius.circular(8.r),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        d.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: AppTextStyles.cardTitle,
+                                      ),
+                                      SizedBox(height: 4.h),
+                                      Text(
+                                        '${locale.tr('continue_ep')} $ep / $totalEps',
+                                        style: AppTextStyles.captionAccent,
+                                      ),
+                                      SizedBox(height: 8.h),
+                                      LinearProgressIndicator(
+                                        value: progress,
+                                        backgroundColor: AppColors.borderLight,
+                                        color: AppColors.primaryBright,
+                                        minHeight: 4.h,
+                                        borderRadius:
+                                            BorderRadius.circular(2.r),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                SizedBox(width: 8.w),
+                                Icon(
+                                  Icons.play_circle_fill_rounded,
+                                  color: AppColors.primaryBright,
+                                  size: 30.sp,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _SavedPosterCard extends StatelessWidget {
+  final DramaCard drama;
+  final String episodeLabel;
+  final IconData badgeIcon;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _SavedPosterCard({
+    required this.drama,
+    required this.episodeLabel,
+    required this.badgeIcon,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10.r),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DramaNetworkImage(imageUrl: drama.coverUrl, fit: BoxFit.cover),
+                  Positioned(
+                    top: 5.h,
+                    right: 5.w,
+                    child: GestureDetector(
+                      onTap: onRemove,
+                      child: Container(
+                        padding: EdgeInsets.all(5.w),
+                        decoration: const BoxDecoration(
+                          color: AppColors.overlayDark,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          badgeIcon,
+                          color: AppColors.primaryBright,
+                          size: 15.sp,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            drama.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.continueCardTitle,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            episodeLabel,
+            style: AppTextStyles.continueEpisodeText,
+          ),
+        ],
       ),
     );
   }
@@ -350,6 +583,8 @@ class _WatchlistTopTab extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 2.w),
                 child: Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: isSelected
                       ? AppTextStyles.watchlistHeaderTabActive
@@ -397,7 +632,6 @@ class _WatchlistEmptyView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Glowing Neon Illustration blended seamlessly onto pure black
             SizedBox(
               width: 248.w,
               height: 248.w,

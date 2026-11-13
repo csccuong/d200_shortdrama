@@ -109,7 +109,7 @@ class _EpisodeSelectorSheetState extends ConsumerState<EpisodeSelectorSheet> {
             child: Row(
               children: [
                 DramaNetworkImage(
-                  url: widget.drama.coverUrl,
+                  imageUrl: widget.drama.coverUrl,
                   width: 54.w,
                   height: 74.h,
                   borderRadius: BorderRadius.circular(8.r),

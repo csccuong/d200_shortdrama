@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
 import '../../models/home_response.dart';
@@ -1342,7 +1341,7 @@ class _HeroBannerItem extends StatelessWidget {
           children: [
             Positioned.fill(
               child: DramaNetworkImage(
-                url: drama.coverUrl,
+                imageUrl: drama.coverUrl,
                 fit: BoxFit.cover,
               ),
             ),
@@ -1448,7 +1447,7 @@ class _ContinueWatchingCard extends StatelessWidget {
                   Opacity(
                     opacity: 0.45,
                     child: DramaNetworkImage(
-                      url: drama.coverUrl,
+                      imageUrl: drama.coverUrl,
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -1547,7 +1546,7 @@ class _PosterGridItem extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   DramaNetworkImage(
-                    url: drama.coverUrl,
+                    imageUrl: drama.coverUrl,
                     fit: BoxFit.cover,
                   ),
                   Positioned.fill(

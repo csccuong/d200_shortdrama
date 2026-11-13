@@ -87,9 +87,19 @@ class SplashController extends ChangeNotifier {
     required WidgetRef ref,
     VoidCallback? onFinished,
   }) async {
+    if (AppConstants.isFlutterTest) {
+      _apiInitialized = false;
+      if (context.mounted && !_isDisposed) {
+        _showSplashAdThenNavigate(context, onFinished: onFinished);
+      }
+      return;
+    }
+
     try {
-      final sessionState =
-          await ref.read(sessionProvider.notifier).initializeSession();
+      final sessionState = await ref
+          .read(sessionProvider.notifier)
+          .initializeSession()
+          .timeout(const Duration(seconds: 8));
       final initData = sessionState.initData;
 
       if (sessionState.isInitialized && initData != null) {

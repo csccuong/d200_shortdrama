@@ -391,7 +391,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       method: 'ad',
       unlockFullDrama: false,
       adNetwork: 'admob',
-      adUnitId: MyAdIdName.rewardedUnlock.getId,
+      adUnitId: MyAdIdName.rewardedAd.getId,
     );
   }
 
@@ -460,14 +460,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   }
 
   Future<void> _handleLike() async {
-    final currentLiked = _isLikedOverride ??
-        (ref.read(mylistProvider).likedIds.contains(widget.drama.dramaId) ||
-            widget.drama.isLiked);
     final currentCount = _likeCountOverride ?? widget.drama.likeCount;
 
     final result = await ref.read(mylistProvider.notifier).toggleLike(
           widget.drama.dramaId,
-          currentIsLiked: currentLiked,
           currentLikeCount: currentCount,
           episodeNumber: widget.showFullDramaButton ? 0 : widget.episodeNo,
         );
@@ -902,7 +898,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       fit: StackFit.expand,
       children: [
         DramaNetworkImage(
-          url: widget.drama.coverUrl,
+          imageUrl: widget.drama.coverUrl,
           fit: BoxFit.cover,
         ),
         const ColoredBox(color: AppColors.overlayMedium),
@@ -951,7 +947,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        DramaNetworkImage(url: widget.drama.coverUrl, fit: BoxFit.cover),
+        DramaNetworkImage(imageUrl: widget.drama.coverUrl, fit: BoxFit.cover),
         const ColoredBox(color: AppColors.overlayHeavy),
         Center(
           child: Container(
@@ -1062,7 +1058,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                               }
                             },
                       style: TextButton.styleFrom(
-                        foregroundColor: AppColors.textWhite80,
+                        foregroundColor: AppColors.textWhite70,
                         padding: EdgeInsets.symmetric(vertical: 8.h),
                       ),
                       child: Text(
