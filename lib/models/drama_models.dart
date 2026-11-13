@@ -58,7 +58,7 @@ class Drama {
     required this.episodes,
   });
 
-  String get posterAssetPath => 'assets/dramas/$slug/$posterFile';
+  String get posterAssetPath => '';
 
   String get formattedViews {
     if (viewCount >= 1000000) {

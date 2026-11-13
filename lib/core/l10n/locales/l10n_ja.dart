@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack jaLanguagePack = LanguagePack(
   code: 'ja',
@@ -223,38 +223,6 @@ const LanguagePack jaLanguagePack = LanguagePack(
     'Many Free Episodes': '無料話数多数',
     'Stepmother / Mother-in-law': 'ファミリー劇',
   },
-  dramaTitles: {
-    '01_a_billionaires_love': '億万長者の愛：消えた子供の秘密',
-    '02_the_tyrants_thoughts': '暴君の心の声',
-    '03_dad_of_five_daughters': '五人娘の父になって',
-    '04_fortune_brides_revenge': '風水花嫁の復讐',
-    '05_farm_girls_space': '農村少女の霊泉空間',
-    '06_system_ascension': 'システム覚醒で頂点へ',
-    '07_spirit_beasts_dominate': '霊獣牧場の覇者',
-    '08_roommate_past_love': 'ルームメイトはかつての恋人',
-    '09_dragon_hidden_in_the_heart': '心に秘めたる龍',
-    '10_fake_romance_turns_real': '偽りの恋が本物に変わる時',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        '母を救うため全てを犠牲にし息子を失った彼女。数年後、大富豪CEOムリロの孤独な息子と出会い、奪われた愛と真実を取り戻すために立ち上がる。',
-    '02_the_tyrants_thoughts':
-        '現代の法医学者・宋雲初が古代王朝の右丞相に転生。心を読める皇帝と手を組み、法医学の知識で宮廷の陰謀を次々と解き明かす。',
-    '03_dad_of_five_daughters':
-        '古代にタイムスリップし五人娘の父となった秦朗。貧しい家族と娘たちの未来を守るため、ゼロから商売を始めて大逆転を果たす。',
-    '04_fortune_brides_revenge':
-        '風水の天才・折月は身代わりの花嫁として燕王府へ。婚礼の夜に封鎖された一族を守るため、燕瀟然と共に陰謀に立ち向かう。',
-    '05_farm_girls_space':
-        '傭兵から虐げられた農村少女に転生した彼女は、傷を癒やす霊泉空間を覚醒。家族を守り大酒楼を築き上げる痛快サクセスストーリー。',
-    '06_system_ascension':
-        '平凡な青年・陳洛が支援システムを起動し、料理・透視・投資の神スキルを獲得。数々の陰謀を打ち破り財界の頂点へと駆け上がる。',
-    '07_spirit_beasts_dominate':
-        'すり替えられた仮の若様・周葉が重生し、先祖伝来の腕輪から霊獣牧場システムを解放。神獣を育て上げ逆転劇を繰り広げる。',
-    '08_roommate_past_love':
-        '短期ルームメイトの林希夢に不思議な懐かしさを覚える李煌軒。彼女が去った後、3年前の流れ星に託された切ない記憶が蘇る。',
-    '09_dragon_hidden_in_the_heart':
-        '恋愛専門家・何嬌嬌は初恋の相手・周延深と再会し、名家の跡目争いと復讐劇に巻き込まれながら真実の愛を取り戻していく。',
-    '10_fake_romance_turns_real':
-        '結婚の重圧に悩む張陽は、快活な女性・李星河を偽の恋人として雇うが、彼女の姉妹まで同居することになり本物の恋が芽生え始める。',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

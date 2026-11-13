@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/utils/screen_utils.dart';
-import '../../models/drama_models.dart';
+import '../../models/drama_card.dart';
+import '../../models/home_response.dart';
+import '../../models/taxonomy_models.dart';
 import '../../providers/app_providers.dart';
+import '../../widgets/drama_network_image.dart';
 import '../player/drama_player_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -15,7 +20,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   final PageController _bannerController = PageController();
+  final ScrollController _scrollController = ScrollController();
 
   static const List<String> _topTabKeys = [
     'tab_discover',
@@ -27,67 +34,273 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     'tab_ranking',
   ];
 
+  Timer? _searchDebounce;
+  bool _didBootstrap = false;
+
   int _selectedTopTab = 0;
-  String _selectedCategory = 'ALL';
+  String _selectedCategory = 'all';
+  String _selectedTag = '';
+  String _selectedCountry = 'all';
+  String _selectedAudioMode = 'all';
   String _sortBy = 'popular';
+  String _rankingType = 'most_viewed';
   String _searchQuery = '';
   int _bannerIndex = 0;
 
+  // Dedicated state for filtered tabs (New, Categories, VIP, Filter, Ranking)
+  List<DramaCard> _tabDramas = [];
+  int _tabPage = 1;
+  bool _tabHasMore = false;
+  bool _isLoadingTab = false;
+  String? _tabError;
+
+  // Dedicated state for Search & Hot keywords
+  List<DramaCard> _searchResults = [];
+  List<String> _hotKeywords = [];
+  bool _isSearching = false;
+  String? _searchError;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _searchFocus.addListener(() {
+      if (_searchFocus.hasFocus && _hotKeywords.isEmpty) {
+        unawaited(_loadHotKeywords());
+      }
+      if (mounted) setState(() {});
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _didBootstrap) return;
+      _didBootstrap = true;
+      final sessionReady =
+          ref.read(sessionProvider).asData?.value.isInitialized ?? false;
+      final hasHome =
+          ref.read(homeProvider).asData?.value.homeData != null;
+      if (sessionReady && !hasHome) {
+        unawaited(
+          ref
+              .read(homeProvider.notifier)
+              .fetchHome(ref.read(localeProvider).appLanguage),
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     _bannerController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  List<String> _extractCategories(List<Drama> dramas) {
-    final set = <String>{'ALL'};
-    for (final d in dramas) {
-      for (final t in d.tags) {
-        if (t.trim().isNotEmpty) set.add(t.trim());
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels < pos.maxScrollExtent - 320) return;
+
+    if (_searchQuery.trim().isNotEmpty) return;
+    if (_selectedTopTab == 0) {
+      unawaited(
+        ref
+            .read(homeProvider.notifier)
+            .loadMoreRecommended(lang: ref.read(localeProvider).appLanguage),
+      );
+    } else if (_tabHasMore && !_isLoadingTab) {
+      unawaited(_loadTabDramas(reset: false));
+    }
+  }
+
+  Future<void> _loadHotKeywords() async {
+    final sessionReady =
+        ref.read(sessionProvider).asData?.value.isInitialized ?? false;
+    if (!sessionReady) return;
+    try {
+      final data = await ref
+          .read(homeApiServiceProvider)
+          .searchHot(lang: ref.read(localeProvider).appLanguage);
+      final rawKeywords = data['hot_keywords'] ?? data['keywords'];
+      if (rawKeywords is List && mounted) {
+        setState(() {
+          _hotKeywords = rawKeywords
+              .map((e) => e is Map ? (e['keyword'] ?? e['title'] ?? '').toString() : e.toString())
+              .where((s) => s.trim().isNotEmpty)
+              .take(10)
+              .toList();
+        });
       }
+    } catch (_) {
+      // Optional enhancement
     }
-    return set.take(10).toList();
   }
 
-  List<Drama> _filterAndSortDramas(List<Drama> dramas, LocaleState locale) {
-    final filtered = dramas.where((d) {
-      final matchesCategory = _selectedCategory == 'ALL' ||
-          d.tags.any((t) => t.toLowerCase() == _selectedCategory.toLowerCase());
-      final q = _searchQuery.trim().toLowerCase();
-      final matchesSearch = q.isEmpty ||
-          d.title.toLowerCase().contains(q) ||
-          locale.dramaTitle(d).toLowerCase().contains(q) ||
-          d.slug.toLowerCase().contains(q) ||
-          d.description.toLowerCase().contains(q) ||
-          locale.dramaDescription(d).toLowerCase().contains(q) ||
-          d.tags.any(
-            (t) =>
-                t.toLowerCase().contains(q) ||
-                locale.trTag(t).toLowerCase().contains(q),
+  void _onSearchChanged(String val) {
+    setState(() => _searchQuery = val);
+    _searchDebounce?.cancel();
+    final trimmed = val.trim();
+    if (trimmed.isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+        _searchError = null;
+      });
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      unawaited(_executeSearch(trimmed));
+    });
+  }
+
+  Future<void> _executeSearch(String query) async {
+    if (!mounted) return;
+    setState(() {
+      _isSearching = true;
+      _searchError = null;
+    });
+    try {
+      final lang = ref.read(localeProvider).appLanguage;
+      final res = await ref.read(homeApiServiceProvider).search(
+            query: query,
+            lang: lang,
           );
-      return matchesCategory && matchesSearch;
-    }).toList();
-
-    if (_sortBy == 'rating') {
-      filtered.sort((a, b) => b.score.compareTo(a.score));
-    } else if (_sortBy == 'episodes') {
-      filtered.sort((a, b) => b.totalEpisodes.compareTo(a.totalEpisodes));
-    } else {
-      filtered.sort((a, b) => b.viewCount.compareTo(a.viewCount));
+      if (!mounted || _searchQuery.trim() != query) return;
+      ref.read(eventTrackerProvider).track(
+        'search',
+        sourceScreen: 'home',
+        props: {'query': query, 'results': res.items.length},
+      );
+      setState(() {
+        _searchResults = res.items;
+        _isSearching = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isSearching = false;
+        _searchError = e.toString();
+      });
     }
-    return filtered;
   }
 
-  void _openDrama(Drama drama, {int? episodeNo}) {
+  Future<void> _selectTopTab(int idx) async {
+    setState(() {
+      _selectedTopTab = idx;
+      _tabError = null;
+    });
+    if (idx != 0) {
+      await _loadTabDramas(reset: true);
+    }
+  }
+
+  Future<void> _loadTabDramas({required bool reset}) async {
+    if (_isLoadingTab && !reset) return;
+    final nextPage = reset ? 1 : (_tabPage + 1);
+    setState(() {
+      _isLoadingTab = true;
+      if (reset) {
+        _tabError = null;
+      }
+    });
+
+    try {
+      final api = ref.read(homeApiServiceProvider);
+      final lang = ref.read(localeProvider).appLanguage;
+      late final ({List<DramaCard> items, dynamic pagination}) res;
+
+      switch (_selectedTopTab) {
+        case 1:
+        case 5:
+          res = await api.fetchNewDramas(page: nextPage, pageSize: 21, lang: lang);
+          break;
+        case 3:
+          res = await api.browseDramas(
+            page: nextPage,
+            pageSize: 21,
+            isVip: 'vip',
+            sort: _sortBy,
+            lang: lang,
+          );
+          break;
+        case 6:
+          res = await api.fetchRanking(
+            type: _rankingType,
+            page: nextPage,
+            pageSize: 21,
+            lang: lang,
+          );
+          break;
+        case 2:
+        case 4:
+        default:
+          res = await api.browseDramas(
+            page: nextPage,
+            pageSize: 21,
+            country: _selectedCountry,
+            audioMode: _selectedAudioMode,
+            category: _selectedCategory,
+            tags: _selectedTag,
+            sort: _sortBy,
+            lang: lang,
+          );
+          break;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _tabDramas = reset ? res.items : [..._tabDramas, ...res.items];
+        _tabPage = res.pagination.page as int;
+        _tabHasMore = res.pagination.hasMore as bool;
+        _isLoadingTab = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingTab = false;
+        _tabError = e.toString();
+      });
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    final lang = ref.read(localeProvider).appLanguage;
+    await ref.read(homeProvider.notifier).fetchHome(lang);
+    if (_selectedTopTab != 0) {
+      await _loadTabDramas(reset: true);
+    }
+    if (_searchQuery.trim().isNotEmpty) {
+      await _executeSearch(_searchQuery.trim());
+    }
+  }
+
+  void _openDrama(DramaCard drama, {int? episodeNo, int? positionSec}) {
     final ep = episodeNo ??
-        ref.read(watchlistProvider).getLastWatchedEpisode(drama.slug);
+        ((drama.continueWatching?.episodeNumber ?? 0) > 0
+            ? drama.continueWatching!.episodeNumber
+            : 1);
+    final pos = positionSec ?? (drama.continueWatching?.positionSec ?? 0);
+
+    ref.read(eventTrackerProvider).track(
+      'drama_click',
+      dramaId: drama.dramaId,
+      episodeNumber: ep,
+      sourceScreen: 'home',
+      props: {'tab': _topTabKeys[_selectedTopTab]},
+    );
+
     showInterAllThen(context, ref, () {
       ref.read(navigationServiceProvider).push(
             context,
             DramaPlayerScreen(
-              drama: drama,
+              dramaCard: drama,
+              dramaId: drama.dramaId,
               initialEpisode: ep,
+              initialPositionSec: pos,
+              sourceScreen: 'home',
             ),
           );
     });
@@ -95,122 +308,231 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final catalogAsync = ref.watch(catalogProvider);
-    final watchlist = ref.watch(watchlistProvider);
+    final homeAsync = ref.watch(homeProvider);
+    final sessionAsync = ref.watch(sessionProvider);
+    final mylistState = ref.watch(mylistProvider);
     final locale = ref.watch(localeProvider);
+
+    ref.listen<LocaleState>(localeProvider, (prev, next) {
+      if (prev?.appLanguage != next.appLanguage &&
+          (sessionAsync.asData?.value.isInitialized ?? false)) {
+        unawaited(ref.read(homeProvider.notifier).fetchHome(next.appLanguage));
+        if (_selectedTopTab != 0) {
+          unawaited(_loadTabDramas(reset: true));
+        }
+      }
+    });
+
+    final homeState = homeAsync.asData?.value;
+    final homeData = homeState?.homeData;
+    final taxonomy = sessionAsync.asData?.value.initData?.taxonomy;
+
+    // Derive categories from taxonomy or homeData
+    final categories = <({String slug, String name})>[
+      (slug: 'all', name: locale.tr('all_categories')),
+      if (taxonomy != null && taxonomy.categories.isNotEmpty)
+        ...taxonomy.categories.map((c) => (slug: c.slug, name: c.name))
+      else if (homeData != null)
+        ...homeData.categories.map(
+          (c) => (
+            slug: (c['slug'] ?? '').toString(),
+            name: (c['name'] ?? c['slug'] ?? '').toString(),
+          ),
+        ),
+    ];
+
+    final sorts = (taxonomy?.facets.sorts.isNotEmpty ?? false)
+        ? taxonomy!.facets.sorts
+        : [
+            FacetSort(code: 'popular', name: locale.tr('sort_popular')),
+            FacetSort(code: 'rating', name: locale.tr('sort_rating')),
+            FacetSort(code: 'latest', name: locale.tr('tab_new')),
+            FacetSort(code: 'trending', name: locale.tr('trending_now')),
+          ];
+
+    final banners = homeData != null
+        ? (homeData.banners.isNotEmpty
+            ? homeData.banners
+            : (homeData.recommended.take(4).toList()))
+        : const <DramaCard>[];
+
+    final continueItems = <DramaCard>[
+      if (homeData != null && homeData.continueWatching.isNotEmpty)
+        ...homeData.continueWatching
+      else if (mylistState.history.isNotEmpty)
+        ...mylistState.history,
+    ];
+
+    final trending = homeData?.trending ?? const <DramaCard>[];
+
+    // Determine primary grid items for active top tab / search
+    late final List<DramaCard> gridItems;
+    if (_searchQuery.trim().isNotEmpty) {
+      gridItems = _searchResults;
+    } else if (_selectedTopTab == 0) {
+      gridItems = homeState?.recommendedDramas ?? const <DramaCard>[];
+    } else if (_tabDramas.isNotEmpty) {
+      gridItems = _tabDramas;
+    } else if (homeData != null) {
+      switch (_selectedTopTab) {
+        case 1:
+        case 5:
+          gridItems = homeData.newReleases;
+          break;
+        case 3:
+          gridItems = homeData.vipExclusive;
+          break;
+        case 6:
+          gridItems = homeData.trending;
+          break;
+        default:
+          gridItems = homeState?.recommendedDramas ?? const [];
+      }
+    } else {
+      gridItems = const [];
+    }
 
     return ColoredBox(
       color: AppColors.background,
-      child: catalogAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator.adaptive(
-            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-          ),
-        ),
-        error: (err, _) => Center(
-          child: Text('$err', style: AppTextStyles.bodySmall),
-        ),
-        data: (allDramas) {
-          final categories = _extractCategories(allDramas);
-          final filtered = _filterAndSortDramas(allDramas, locale);
-          final featured = allDramas.take(4).toList();
-          final trending = [...allDramas]
-            ..sort((a, b) => b.viewCount.compareTo(a.viewCount));
-
-          final continueItems = <MapEntry<Drama, int>>[];
-          for (final entry in watchlist.watchHistory.entries) {
-            final match = allDramas.where((d) => d.slug == entry.key);
-            if (match.isNotEmpty) {
-              continueItems.add(MapEntry(match.first, entry.value));
-            }
-          }
-          for (final d in allDramas) {
-            if (continueItems.length >= 4) break;
-            if (!continueItems.any((e) => e.key.slug == d.slug)) {
-              continueItems.add(MapEntry(d, 4));
-            }
-          }
-
-          return SafeArea(
-            bottom: false,
-            child: CustomScrollView(
-              physics: AppScreenUtils.adaptiveScrollPhysics,
-              slivers: [
-                // 1. TOP HEADER: "Drama" Logo + Pill Search Input
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 8.h),
-                    child: Row(
-                      children: [
-                        const _DramaBrandLogo(),
-                        SizedBox(width: 12.w),
-                        Expanded(
-                          child: Container(
-                            height: 38.h,
-                            decoration: BoxDecoration(
-                              color: AppColors.searchBarBg,
-                              borderRadius: BorderRadius.circular(22.r),
-                              border: Border.all(
-                                color: AppColors.borderSubtle,
-                              ),
+      child: SafeArea(
+        bottom: false,
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          backgroundColor: AppColors.surfaceCard,
+          onRefresh: _handleRefresh,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: AlwaysScrollableScrollPhysics(
+              parent: AppScreenUtils.adaptiveScrollPhysics,
+            ),
+            slivers: [
+              // 1. TOP HEADER: "Drama" Logo + Pill Search Input
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 8.h),
+                  child: Row(
+                    children: [
+                      const _DramaBrandLogo(),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Container(
+                          height: 38.h,
+                          decoration: BoxDecoration(
+                            color: AppColors.searchBarBg,
+                            borderRadius: BorderRadius.circular(22.r),
+                            border: Border.all(
+                              color: AppColors.borderSubtle,
                             ),
-                            child: TextField(
-                              controller: _searchCtrl,
-                              onChanged: (v) =>
-                                  setState(() => _searchQuery = v),
-                              style: AppTextStyles.bodyMedium,
-                              textAlignVertical: TextAlignVertical.center,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: locale.tr('search_hint'),
-                                hintStyle: AppTextStyles.searchHint,
-                                prefixIcon: Icon(
-                                  Icons.search_rounded,
-                                  color: AppColors.textWhite70,
-                                  size: 20.sp,
-                                ),
-                                suffixIcon: _searchQuery.isNotEmpty
-                                    ? GestureDetector(
-                                        onTap: () {
-                                          _searchCtrl.clear();
-                                          setState(() => _searchQuery = '');
-                                        },
-                                        child: Icon(
-                                          Icons.close_rounded,
-                                          color: AppColors.textWhite54,
-                                          size: 17.sp,
-                                        ),
-                                      )
-                                    : null,
-                                border: InputBorder.none,
-                                contentPadding: EdgeInsets.only(right: 12.w),
+                          ),
+                          child: TextField(
+                            controller: _searchCtrl,
+                            focusNode: _searchFocus,
+                            onChanged: _onSearchChanged,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (v) {
+                              if (v.trim().isNotEmpty) {
+                                _searchDebounce?.cancel();
+                                unawaited(_executeSearch(v.trim()));
+                              }
+                            },
+                            style: AppTextStyles.bodyMedium,
+                            textAlignVertical: TextAlignVertical.center,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              hintText: locale.tr('search_hint'),
+                              hintStyle: AppTextStyles.searchHint,
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                color: AppColors.textWhite70,
+                                size: 20.sp,
                               ),
+                              suffixIcon: _searchQuery.isNotEmpty
+                                  ? GestureDetector(
+                                      onTap: () {
+                                        _searchDebounce?.cancel();
+                                        _searchCtrl.clear();
+                                        setState(() {
+                                          _searchQuery = '';
+                                          _searchResults = [];
+                                          _isSearching = false;
+                                          _searchError = null;
+                                        });
+                                      },
+                                      child: Icon(
+                                        Icons.close_rounded,
+                                        color: AppColors.textWhite54,
+                                        size: 17.sp,
+                                      ),
+                                    )
+                                  : null,
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.only(right: 12.w),
                             ),
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // 1b. HOT KEYWORDS BAR (when search bar focused & query empty)
+              if (_searchFocus.hasFocus &&
+                  _searchQuery.trim().isEmpty &&
+                  _hotKeywords.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(14.w, 2.h, 14.w, 8.h),
+                    child: Wrap(
+                      spacing: 8.w,
+                      runSpacing: 6.h,
+                      children: _hotKeywords.map((kw) {
+                        return GestureDetector(
+                          onTap: () {
+                            _searchCtrl.text = kw;
+                            _onSearchChanged(kw);
+                          },
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.w,
+                              vertical: 5.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.searchBarBg,
+                              borderRadius: BorderRadius.circular(14.r),
+                              border: Border.all(color: AppColors.borderSubtle),
+                            ),
+                            child: Text(
+                              kw,
+                              style: AppTextStyles.caption,
+                            ),
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
 
-                // 2. TOP SUB-NAVIGATION TAB BAR
-                SliverToBoxAdapter(
-                  child: SizedBox(
-                    height: 36.h,
-                    child: ListView.separated(
-                      padding: EdgeInsets.symmetric(horizontal: 14.w),
-                      scrollDirection: Axis.horizontal,
-                      physics: AppScreenUtils.adaptiveScrollPhysics,
-                      itemCount: _topTabKeys.length,
-                      separatorBuilder: (_, _) => SizedBox(width: 20.w),
-                      itemBuilder: (context, idx) {
-                        final isSelected = _selectedTopTab == idx;
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedTopTab = idx),
+              // 2. TOP SUB-NAVIGATION TAB BAR (flex-safe horizontal row)
+              SliverToBoxAdapter(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
+                  scrollDirection: Axis.horizontal,
+                  physics: AppScreenUtils.adaptiveScrollPhysics,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: List.generate(_topTabKeys.length, (idx) {
+                      final isSelected = _selectedTopTab == idx;
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          right: idx < _topTabKeys.length - 1 ? 20.w : 0,
+                        ),
+                        child: GestureDetector(
+                          onTap: () => unawaited(_selectTopTab(idx)),
                           behavior: HitTestBehavior.opaque,
                           child: IntrinsicWidth(
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 Text(
@@ -232,111 +554,115 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ],
                             ),
                           ),
-                        );
-                      },
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+
+              // 2b. FILTER / CATEGORY / RANKING CONTROLS
+              if (_searchQuery.trim().isEmpty &&
+                  (_selectedTopTab == 2 || _selectedTopTab == 4))
+                SliverToBoxAdapter(
+                  child: _buildCategoryFilterBar(
+                    categories: categories,
+                    taxonomy: taxonomy,
+                    sorts: sorts,
+                    locale: locale,
+                  ),
+                ),
+
+              if (_searchQuery.trim().isEmpty && _selectedTopTab == 6)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 4.h),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ('most_viewed', locale.tr('trending_now')),
+                          ('most_favorited', locale.tr('my_watchlist')),
+                          ('most_liked', 'Top Liked'),
+                          ('top_rated', locale.tr('sort_rating')),
+                        ].map((opt) {
+                          final active = _rankingType == opt.$1;
+                          return Padding(
+                            padding: EdgeInsets.only(right: 8.w),
+                            child: _FilterPill(
+                              label: opt.$2,
+                              active: active,
+                              onTap: () {
+                                setState(() => _rankingType = opt.$1);
+                                unawaited(_loadTabDramas(reset: true));
+                              },
+                            ),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
 
-                // Optional Filter Drawer when "Categories" (2) or "Filter" (4) is active
-                if (_selectedTopTab == 2 || _selectedTopTab == 4)
-                  SliverToBoxAdapter(
+              // Show top-level loading / error state if Home hasn't loaded yet
+              if (_searchQuery.trim().isEmpty &&
+                  homeData == null &&
+                  homeAsync.isLoading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: CircularProgressIndicator.adaptive(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
+                    ),
+                  ),
+                )
+              else if (_searchQuery.trim().isEmpty &&
+                  homeData == null &&
+                  _tabDramas.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 2.h),
+                      padding: EdgeInsets.all(24.w),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          SizedBox(
-                            height: 32.h,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              physics: AppScreenUtils.adaptiveScrollPhysics,
-                              itemCount: categories.length,
-                              separatorBuilder: (_, _) => SizedBox(width: 8.w),
-                              itemBuilder: (context, idx) {
-                                final cat = categories[idx];
-                                final active = cat == _selectedCategory;
-                                return GestureDetector(
-                                  onTap: () =>
-                                      setState(() => _selectedCategory = cat),
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12.w,
-                                      vertical: 5.h,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: active
-                                          ? null
-                                          : AppColors.searchBarBg,
-                                      gradient: active
-                                          ? AppColors.primaryGradient
-                                          : null,
-                                      borderRadius: BorderRadius.circular(16.r),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      cat == 'ALL'
-                                          ? locale.tr('all_categories')
-                                          : locale.trTag(cat),
-                                      style: AppTextStyles.chipLabel(
-                                        isSelected: active,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
+                          Icon(
+                            Icons.cloud_off_rounded,
+                            color: AppColors.textWhite38,
+                            size: 42.sp,
                           ),
-                          if (_selectedTopTab == 4) ...[
-                            SizedBox(height: 8.h),
-                            Row(
-                              children: [
-                                ('popular', locale.tr('sort_popular')),
-                                ('rating', locale.tr('sort_rating')),
-                                ('episodes', locale.tr('sort_episodes')),
-                              ].map((opt) {
-                                final active = _sortBy == opt.$1;
-                                return Padding(
-                                  padding: EdgeInsets.only(right: 8.w),
-                                  child: GestureDetector(
-                                    onTap: () =>
-                                        setState(() => _sortBy = opt.$1),
-                                    child: Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 11.w,
-                                        vertical: 5.h,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: active
-                                            ? AppColors.borderLight
-                                            : AppColors.searchBarBg,
-                                        borderRadius:
-                                            BorderRadius.circular(14.r),
-                                        border: Border.all(
-                                          color: active
-                                              ? AppColors.primary
-                                              : AppColors.transparent,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        opt.$2,
-                                        style: AppTextStyles.chipLabel(
-                                          isSelected: active,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
+                          SizedBox(height: 12.h),
+                          Text(
+                            homeAsync.hasError
+                                ? '${homeAsync.error}'
+                                : locale.tr('empty_following'),
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.caption,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 14.h),
+                          ElevatedButton.icon(
+                            onPressed: _handleRefresh,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: AppColors.textPrimary,
                             ),
-                          ],
+                            icon: const Icon(Icons.refresh_rounded, size: 18),
+                            label: Text(locale.tr('retry_btn')),
+                          ),
                         ],
                       ),
                     ),
                   ),
-
-                // 3. HERO BANNER CAROUSEL
-                if (_searchQuery.isEmpty && featured.isNotEmpty)
+                )
+              else ...[
+                // 3. HERO BANNER CAROUSEL (Discover Tab)
+                if (_searchQuery.trim().isEmpty &&
+                    _selectedTopTab == 0 &&
+                    banners.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 6.h),
@@ -347,15 +673,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             PageView.builder(
                               controller: _bannerController,
                               physics: AppScreenUtils.adaptiveScrollPhysics,
-                              itemCount: featured.length,
+                              itemCount: banners.length,
                               onPageChanged: (i) =>
                                   setState(() => _bannerIndex = i),
                               itemBuilder: (context, idx) {
-                                final d = featured[idx];
+                                final d = banners[idx];
                                 return _HeroBannerItem(
                                   drama: d,
                                   locale: locale,
-                                  isFirstSlide: idx == 0,
                                   onWatchNow: () => _openDrama(d),
                                 );
                               },
@@ -366,8 +691,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               bottom: 8.h,
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
-                                children:
-                                    List.generate(featured.length, (idx) {
+                                children: List.generate(banners.length, (idx) {
                                   final active = idx == _bannerIndex;
                                   return AnimatedContainer(
                                     duration: const Duration(milliseconds: 200),
@@ -391,9 +715,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
 
-                // 4. CONTINUE WATCHING + "See All >"
-                if (_searchQuery.isEmpty &&
-                    (_selectedTopTab == 0 || _selectedTopTab == 3))
+                // 4. CONTINUE WATCHING
+                if (_searchQuery.trim().isEmpty &&
+                    (_selectedTopTab == 0 || _selectedTopTab == 3) &&
+                    continueItems.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.only(top: 14.h),
@@ -422,13 +747,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               itemBuilder: (context, idx) {
                                 final item = continueItems[idx];
                                 return _ContinueWatchingCard(
-                                  drama: item.key,
+                                  drama: item,
                                   locale: locale,
-                                  episodeNo: item.value,
-                                  onTap: () => _openDrama(
-                                    item.key,
-                                    episodeNo: item.value,
-                                  ),
+                                  onTap: () => _openDrama(item),
                                 );
                               },
                             ),
@@ -438,9 +759,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
 
-                // 5. TRENDING NOW (3 Cards with TOP 1, TOP 2, TOP 3 Ribbons)
-                if (_searchQuery.isEmpty &&
-                    (_selectedTopTab == 0 || _selectedTopTab == 6))
+                // 5. TRENDING NOW (3 Cards with TOP 1..3 Ribbons)
+                if (_searchQuery.trim().isEmpty &&
+                    _selectedTopTab == 0 &&
+                    trending.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.only(top: 14.h),
@@ -452,8 +774,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: _SectionHeader(
                               title: locale.tr('trending_now'),
                               seeAllLabel: locale.tr('see_all'),
-                              onSeeAll: () =>
-                                  setState(() => _selectedTopTab = 6),
+                              onSeeAll: () => unawaited(_selectTopTab(6)),
                             ),
                           ),
                           SizedBox(height: 10.h),
@@ -474,7 +795,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       child: _PosterGridItem(
                                         drama: d,
                                         locale: locale,
-                                        rankNumber: idx + 1,
+                                        rankNumber: d.trendingRank ?? (idx + 1),
                                         onTap: () => _openDrama(d),
                                       ),
                                     ),
@@ -488,58 +809,429 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
 
-                // 6. RECOMMENDED FOR YOU (3-Column Vertical Grid)
+                // 5b. CATEGORY SECTIONS SHELVES (from /v1/home)
+                if (_searchQuery.trim().isEmpty &&
+                    _selectedTopTab == 0 &&
+                    homeData != null &&
+                    homeData.categorySections.isNotEmpty)
+                  ...homeData.categorySections.take(3).map(
+                        (section) => _buildCategorySectionSliver(
+                          section,
+                          locale,
+                        ),
+                      ),
+
+                // 6. MAIN SECTION TITLE
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(14.w, 18.h, 14.w, 10.h),
                     child: Text(
-                      _searchQuery.isNotEmpty
-                          ? '${locale.tr('search_results')} (${filtered.length})'
-                          : _selectedTopTab == 1 || _selectedTopTab == 5
-                              ? locale.tr('new_releases')
-                              : _selectedTopTab == 3
-                                  ? locale.tr('vip_exclusive')
-                                  : _selectedTopTab == 6
-                                      ? locale.tr('top_ranking_dramas')
-                                      : locale.tr('recommended_for_you'),
+                      _sectionHeading(locale, gridItems.length),
                       style: AppTextStyles.sectionTitle,
                     ),
                   ),
                 ),
 
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 24.h),
-                  sliver: SliverGrid(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: AppScreenUtils.posterGridColumns(context),
-                      crossAxisSpacing: 10.w,
-                      mainAxisSpacing: 14.h,
-                      childAspectRatio: 0.62,
+                // 7. LOADING / EMPTY / 3-COLUMN GRID
+                if ((_isSearching && _searchQuery.trim().isNotEmpty) ||
+                    (_isLoadingTab && gridItems.isEmpty))
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40),
+                      child: Center(
+                        child: CircularProgressIndicator.adaptive(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppColors.primaryBright,
+                          ),
+                        ),
+                      ),
                     ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, idx) {
-                        final listToUse =
-                            (_selectedTopTab == 1 || _selectedTopTab == 5)
-                                ? filtered.reversed.toList()
-                                : filtered;
-                        final d = listToUse[idx];
-                        return _PosterGridItem(
-                          drama: d,
-                          locale: locale,
-                          rankNumber: _selectedTopTab == 6 ? idx + 1 : null,
-                          showNewBadge:
-                              _selectedTopTab == 1 || _selectedTopTab == 5,
-                          onTap: () => _openDrama(d),
-                        );
-                      },
-                      childCount: filtered.length,
+                  )
+                else if (_searchError != null && _searchQuery.trim().isNotEmpty)
+                  SliverToBoxAdapter(
+                    child: _InlineRetryBox(
+                      message: _searchError!,
+                      retryLabel: locale.tr('retry_btn'),
+                      onRetry: () =>
+                          unawaited(_executeSearch(_searchQuery.trim())),
+                    ),
+                  )
+                else if (_tabError != null &&
+                    _selectedTopTab != 0 &&
+                    gridItems.isEmpty)
+                  SliverToBoxAdapter(
+                    child: _InlineRetryBox(
+                      message: _tabError!,
+                      retryLabel: locale.tr('retry_btn'),
+                      onRetry: () => unawaited(_loadTabDramas(reset: true)),
+                    ),
+                  )
+                else if (gridItems.isEmpty)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 36.h),
+                      child: Center(
+                        child: Text(
+                          locale.tr('empty_following'),
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                    ),
+                  )
+                else ...[
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(14.w, 0, 14.w, 16.h),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount:
+                            AppScreenUtils.posterGridColumns(context),
+                        crossAxisSpacing: 10.w,
+                        mainAxisSpacing: 14.h,
+                        childAspectRatio: 0.62,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, idx) {
+                          final d = gridItems[idx];
+                          return _PosterGridItem(
+                            drama: d,
+                            locale: locale,
+                            rankNumber: _selectedTopTab == 6
+                                ? (d.trendingRank ?? (idx + 1))
+                                : null,
+                            showNewBadge:
+                                _selectedTopTab == 1 || _selectedTopTab == 5,
+                            onTap: () => _openDrama(d),
+                          );
+                        },
+                        childCount: gridItems.length,
+                      ),
                     ),
                   ),
-                ),
+                  if ((homeState?.isLoadingMore ?? false) ||
+                      (_selectedTopTab != 0 && _isLoadingTab))
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: 24),
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primaryBright,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverToBoxAdapter(child: SizedBox(height: 16.h)),
+                ],
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _sectionHeading(LocaleState locale, int count) {
+    if (_searchQuery.trim().isNotEmpty) {
+      return '${locale.tr('search_results')} ($count)';
+    }
+    switch (_selectedTopTab) {
+      case 1:
+      case 5:
+        return locale.tr('new_releases');
+      case 3:
+        return locale.tr('vip_exclusive');
+      case 6:
+        return locale.tr('top_ranking_dramas');
+      default:
+        return locale.tr('recommended_for_you');
+    }
+  }
+
+  Widget _buildCategorySectionSliver(
+    CategorySection section,
+    LocaleState locale,
+  ) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.only(top: 16.h),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14.w),
+              child: _SectionHeader(
+                title: section.title.isNotEmpty
+                    ? '${section.icon} ${section.title}'.trim()
+                    : locale.trTag(section.slug),
+                seeAllLabel: locale.tr('see_all'),
+                onSeeAll: () {
+                  setState(() => _selectedCategory = section.slug);
+                  unawaited(_selectTopTab(2));
+                },
+              ),
             ),
-          );
-        },
+            SizedBox(height: 10.h),
+            SizedBox(
+              height: 186.h,
+              child: ListView.separated(
+                padding: EdgeInsets.symmetric(horizontal: 14.w),
+                scrollDirection: Axis.horizontal,
+                physics: AppScreenUtils.adaptiveScrollPhysics,
+                itemCount: section.items.length,
+                separatorBuilder: (_, _) => SizedBox(width: 10.w),
+                itemBuilder: (context, idx) {
+                  final d = section.items[idx];
+                  return SizedBox(
+                    width: 108.w,
+                    child: _PosterGridItem(
+                      drama: d,
+                      locale: locale,
+                      onTap: () => _openDrama(d),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryFilterBar({
+    required List<({String slug, String name})> categories,
+    required Taxonomy? taxonomy,
+    required List<FacetSort> sorts,
+    required LocaleState locale,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 2.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 32.h,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: AppScreenUtils.adaptiveScrollPhysics,
+              itemCount: categories.length,
+              separatorBuilder: (_, _) => SizedBox(width: 8.w),
+              itemBuilder: (context, idx) {
+                final cat = categories[idx];
+                final active = cat.slug == _selectedCategory;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _selectedCategory = cat.slug);
+                    unawaited(_loadTabDramas(reset: true));
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 12.w,
+                      vertical: 5.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: active ? null : AppColors.searchBarBg,
+                      gradient: active ? AppColors.primaryGradient : null,
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      cat.name,
+                      style: AppTextStyles.chipLabel(isSelected: active),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_selectedTopTab == 2 &&
+              taxonomy != null &&
+              taxonomy.tags.isNotEmpty) ...[
+            SizedBox(height: 8.h),
+            SizedBox(
+              height: 28.h,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: taxonomy.tags.take(12).length,
+                separatorBuilder: (_, _) => SizedBox(width: 6.w),
+                itemBuilder: (context, idx) {
+                  final tag = taxonomy.tags[idx];
+                  final active = _selectedTag == tag.slug;
+                  return _FilterPill(
+                    label: '#${tag.name}',
+                    active: active,
+                    onTap: () {
+                      setState(() {
+                        _selectedTag = active ? '' : tag.slug;
+                      });
+                      unawaited(_loadTabDramas(reset: true));
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_selectedTopTab == 4) ...[
+            if (taxonomy != null && taxonomy.facets.countries.isNotEmpty) ...[
+              SizedBox(height: 8.h),
+              SizedBox(
+                height: 28.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: taxonomy.facets.countries.length + 1,
+                  separatorBuilder: (_, _) => SizedBox(width: 6.w),
+                  itemBuilder: (context, idx) {
+                    if (idx == 0) {
+                      return _FilterPill(
+                        label: locale.tr('cat_all'),
+                        active: _selectedCountry == 'all',
+                        onTap: () {
+                          setState(() => _selectedCountry = 'all');
+                          unawaited(_loadTabDramas(reset: true));
+                        },
+                      );
+                    }
+                    final c = taxonomy.facets.countries[idx - 1];
+                    return _FilterPill(
+                      label: '${c.flag} ${c.name}'.trim(),
+                      active: _selectedCountry == c.code,
+                      onTap: () {
+                        setState(() => _selectedCountry = c.code);
+                        unawaited(_loadTabDramas(reset: true));
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (taxonomy != null && taxonomy.facets.audioModes.isNotEmpty) ...[
+              SizedBox(height: 8.h),
+              SizedBox(
+                height: 28.h,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: taxonomy.facets.audioModes.length + 1,
+                  separatorBuilder: (_, _) => SizedBox(width: 6.w),
+                  itemBuilder: (context, idx) {
+                    if (idx == 0) {
+                      return _FilterPill(
+                        label: locale.tr('sub_label'),
+                        active: _selectedAudioMode == 'all',
+                        onTap: () {
+                          setState(() => _selectedAudioMode = 'all');
+                          unawaited(_loadTabDramas(reset: true));
+                        },
+                      );
+                    }
+                    final a = taxonomy.facets.audioModes[idx - 1];
+                    return _FilterPill(
+                      label: a.name,
+                      active: _selectedAudioMode == a.code,
+                      onTap: () {
+                        setState(() => _selectedAudioMode = a.code);
+                        unawaited(_loadTabDramas(reset: true));
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+            SizedBox(height: 8.h),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: sorts.map((opt) {
+                  return Padding(
+                    padding: EdgeInsets.only(right: 8.w),
+                    child: _FilterPill(
+                      label: opt.name,
+                      active: _sortBy == opt.code,
+                      onTap: () {
+                        setState(() => _sortBy = opt.code);
+                        unawaited(_loadTabDramas(reset: true));
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterPill extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _FilterPill({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 11.w, vertical: 5.h),
+        decoration: BoxDecoration(
+          color: active ? AppColors.borderLight : AppColors.searchBarBg,
+          borderRadius: BorderRadius.circular(14.r),
+          border: Border.all(
+            color: active ? AppColors.primary : AppColors.transparent,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTextStyles.chipLabel(isSelected: active),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineRetryBox extends StatelessWidget {
+  final String message;
+  final String retryLabel;
+  final VoidCallback onRetry;
+
+  const _InlineRetryBox({
+    required this.message,
+    required this.retryLabel,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 30.h),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.caption,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          SizedBox(height: 10.h),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 17),
+            label: Text(retryLabel),
+          ),
+        ],
       ),
     );
   }
@@ -625,27 +1317,18 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _HeroBannerItem extends StatelessWidget {
-  final Drama drama;
+  final DramaCard drama;
   final LocaleState locale;
-  final bool isFirstSlide;
   final VoidCallback onWatchNow;
 
   const _HeroBannerItem({
     required this.drama,
     required this.locale,
-    required this.isFirstSlide,
     required this.onWatchNow,
   });
 
   @override
   Widget build(BuildContext context) {
-    final displayTitle = isFirstSlide
-        ? locale.tr('hero_banner_title')
-        : locale.dramaTitle(drama);
-    final displaySub = isFirstSlide
-        ? locale.tr('hero_banner_subtitle')
-        : locale.dramaDescription(drama);
-
     return GestureDetector(
       onTap: onWatchNow,
       child: Container(
@@ -658,10 +1341,9 @@ class _HeroBannerItem extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: Image.asset(
-                drama.posterAssetPath,
+              child: DramaNetworkImage(
+                url: drama.coverUrl,
                 fit: BoxFit.cover,
-                alignment: const Alignment(0.4, -0.35),
               ),
             ),
             DecoratedBox(
@@ -676,14 +1358,14 @@ class _HeroBannerItem extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    displayTitle,
+                    drama.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.heroSerifItalic,
                   ),
                   SizedBox(height: 6.h),
                   Text(
-                    displaySub,
+                    drama.description,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.caption,
@@ -723,21 +1405,24 @@ class _HeroBannerItem extends StatelessWidget {
 }
 
 class _ContinueWatchingCard extends StatelessWidget {
-  final Drama drama;
+  final DramaCard drama;
   final LocaleState locale;
-  final int episodeNo;
   final VoidCallback onTap;
 
   const _ContinueWatchingCard({
     required this.drama,
     required this.locale,
-    required this.episodeNo,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final progress = (episodeNo / drama.totalEpisodes).clamp(0.32, 0.85);
+    final cw = drama.continueWatching;
+    final epNo = (cw?.episodeNumber ?? 0) > 0 ? cw!.episodeNumber : 1;
+    final totalEps = drama.totalEpisodes > 0 ? drama.totalEpisodes : epNo;
+    final progress = (cw != null && cw.percentWatched > 0)
+        ? (cw.percentWatched / 100.0).clamp(0.05, 1.0)
+        : (epNo / totalEps).clamp(0.1, 1.0);
 
     return GestureDetector(
       onTap: onTap,
@@ -761,9 +1446,9 @@ class _ContinueWatchingCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   Opacity(
-                    opacity: 0.22,
-                    child: Image.asset(
-                      drama.posterAssetPath,
+                    opacity: 0.45,
+                    child: DramaNetworkImage(
+                      url: drama.coverUrl,
                       fit: BoxFit.cover,
                     ),
                   ),
@@ -807,14 +1492,14 @@ class _ContinueWatchingCard extends StatelessWidget {
             ),
             SizedBox(height: 7.h),
             Text(
-              locale.dramaTitle(drama),
+              drama.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.continueCardTitle,
             ),
             SizedBox(height: 2.h),
             Text(
-              '${locale.tr('episode_prefix')} $episodeNo',
+              '${locale.tr('episode_prefix')} $epNo',
               style: AppTextStyles.continueEpisodeText,
             ),
           ],
@@ -825,7 +1510,7 @@ class _ContinueWatchingCard extends StatelessWidget {
 }
 
 class _PosterGridItem extends StatelessWidget {
-  final Drama drama;
+  final DramaCard drama;
   final LocaleState locale;
   final int? rankNumber;
   final bool showNewBadge;
@@ -861,11 +1546,9 @@ class _PosterGridItem extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.asset(
-                    drama.posterAssetPath,
+                  DramaNetworkImage(
+                    url: drama.coverUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        const ColoredBox(color: AppColors.surface),
                   ),
                   Positioned.fill(
                     child: DecoratedBox(
@@ -930,7 +1613,7 @@ class _PosterGridItem extends StatelessWidget {
           ),
           SizedBox(height: 6.h),
           Text(
-            locale.dramaTitle(drama),
+            drama.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: AppTextStyles.posterTitle,

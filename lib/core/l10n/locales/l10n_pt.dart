@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack ptLanguagePack = LanguagePack(
   code: 'pt',
@@ -233,39 +233,6 @@ const LanguagePack ptLanguagePack = LanguagePack(
     'Many Free Episodes': 'Muitos episódios grátis',
     'Stepmother / Mother-in-law': 'Drama familiar',
   },
-  dramaTitles: {
-    '01_a_billionaires_love':
-        'O Amor de um Bilionário: O Segredo do Filho Perdido',
-    '02_the_tyrants_thoughts': 'Os Pensamentos do Tirano',
-    '03_dad_of_five_daughters': 'Pai de Cinco Filhas',
-    '04_fortune_brides_revenge': 'A Vingança da Noiva Mística',
-    '05_farm_girls_space': 'O Espaço Mágico da Camponesa',
-    '06_system_ascension': 'Ascensão pelo Sistema',
-    '07_spirit_beasts_dominate': 'Domínio das Feras Espirituais',
-    '08_roommate_past_love': 'Amor do Passado sob o Mesmo Teto',
-    '09_dragon_hidden_in_the_heart': 'O Dragão Escondido no Coração',
-    '10_fake_romance_turns_real': 'Namoro Falso, Amor Verdadeiro',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        'Para salvar a mãe, ela perdeu o filho. Anos depois, o destino a aproxima do filho solitário do poderoso CEO Murilo.',
-    '02_the_tyrants_thoughts':
-        'A médica legista Song Yunchu viaja para uma dinastia antiga onde o imperador Jun Lilu consegue ler seus pensamentos.',
-    '03_dad_of_five_daughters':
-        'Qin Lang acorda na antiguidade como pai de cinco filhas e constrói um império do zero para garantir o futuro da família.',
-    '04_fortune_brides_revenge':
-        'Zhe Yue, mestra da metafísica, entra em um casamento substituto e luta ao lado de Yan Xiaoran para proteger a família.',
-    '05_farm_girls_space':
-        'Uma mercenária renasce no campo e desperta uma fonte espiritual mágica que cura feridas e transforma sua vida em um grande sucesso.',
-    '06_system_ascension':
-        'Chen Luo ativa um sistema que lhe concede habilidades incríveis e riquezas, dominando grandes conglomerados empresariais.',
-    '07_spirit_beasts_dominate':
-        'Após renascer, Zhou Ye desperta um bracelete ancestral que abre o Espaço de Pastagem Espiritual para criar feras divinas.',
-    '08_roommate_past_love':
-        'Li Huangxuan acolhe a colega de quarto Lin Ximeng sem saber que três anos antes ela sacrificou tudo para salvá-lo.',
-    '09_dragon_hidden_in_the_heart':
-        'He Jiaojiao reencontra seu primeiro amor Zhou Yanshen em uma disputa familiar onde um romance falso se torna verdadeiro.',
-    '10_fake_romance_turns_real':
-        'Pressionado a se casar, Zhang Yang contrata Li Xinghe como namorada falsa, dando início a uma paixão inesperada e sincera.',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

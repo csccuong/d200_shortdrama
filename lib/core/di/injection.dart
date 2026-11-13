@@ -1,11 +1,17 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:video_player/video_player.dart';
 import '../../models/drama_models.dart';
 import '../../services/guest_identity_service.dart';
-import '../../services/srt_parser.dart';
+import '../startup/app_startup_coordinator.dart';
+import '../../services/api/app_api_service.dart';
+import '../../services/api/home_api_service.dart';
+import '../../services/api/feed_api_service.dart';
+import '../../services/api/drama_api_service.dart';
+import '../../services/api/mylist_api_service.dart';
+import '../../services/api/rewards_api_service.dart';
+import '../../services/api/account_api_service.dart';
+import 'package:dxx_shortdrama/services/api/event_tracker_service.dart';
 import '../utils/screen_utils.dart';
 
 /// Global Service Locator instance (GetIt).
@@ -49,6 +55,63 @@ void ensureDependenciesRegistered() {
       () => VideoControllerFactory(),
     );
   }
+
+  // ── API Integration: Startup Coordinator + 7 API Services ──
+
+  if (!getIt.isRegistered<AppStartupCoordinator>()) {
+    getIt.registerLazySingleton<AppStartupCoordinator>(
+      () => AppStartupCoordinator(),
+    );
+  }
+
+  if (!getIt.isRegistered<AppApiService>()) {
+    getIt.registerLazySingleton<AppApiService>(
+      () => AppApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<HomeApiService>()) {
+    getIt.registerLazySingleton<HomeApiService>(
+      () => HomeApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<FeedApiService>()) {
+    getIt.registerLazySingleton<FeedApiService>(
+      () => FeedApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<DramaApiService>()) {
+    getIt.registerLazySingleton<DramaApiService>(
+      () => DramaApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<MyListApiService>()) {
+    getIt.registerLazySingleton<MyListApiService>(
+      () => MyListApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<RewardsApiService>()) {
+    getIt.registerLazySingleton<RewardsApiService>(
+      () => RewardsApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<AccountApiService>()) {
+    getIt.registerLazySingleton<AccountApiService>(
+      () => AccountApiService(getIt<AppStartupCoordinator>().dio),
+    );
+  }
+
+  if (!getIt.isRegistered<DramaEventTracker>()) {
+    getIt.registerLazySingleton<DramaEventTracker>(
+      () => DramaEventTracker(getIt<AppStartupCoordinator>().dio),
+      dispose: (tracker) => tracker.dispose(),
+    );
+  }
 }
 
 /// Helper to safely resolve a registered dependency from [getIt].
@@ -72,7 +135,7 @@ class AppNavigationService {
   }
 }
 
-/// Service responsible for loading & caching the drama catalog (`catalog.json`).
+/// Service responsible for returning drama catalog entries from the backend.
 class CatalogService {
   List<Drama>? _cachedCatalog;
 
@@ -80,17 +143,12 @@ class CatalogService {
     if (_cachedCatalog != null && !forceRefresh) {
       return _cachedCatalog!;
     }
-    final rawJson = await rootBundle.loadString('assets/dramas/catalog.json');
-    final list = json.decode(rawJson) as List<dynamic>;
-    _cachedCatalog = list
-        .map((item) => Drama.fromJson(item as Map<String, dynamic>))
-        .toList();
+    _cachedCatalog = const [];
     return _cachedCatalog!;
   }
 }
 
-/// Service responsible for loading, parsing, and caching `.srt` subtitles
-/// synchronized with the selected App Language.
+/// Service responsible for caching `.srt` subtitles synchronized with App Language.
 class SubtitleService {
   final Map<String, List<SubtitleCue>> _cache = {};
 
@@ -100,32 +158,7 @@ class SubtitleService {
     required String langCode,
   }) async {
     final cacheKey = '$slug|$episodeNo|$langCode';
-    final cached = _cache[cacheKey];
-    if (cached != null) return cached;
-
-    final epPadded = episodeNo.toString().padLeft(3, '0');
-    final primaryPath = 'assets/dramas/$slug/sub/$langCode/ep_$epPadded.srt';
-
-    try {
-      final srtContent = await rootBundle.loadString(primaryPath);
-      final parsed = SrtParser.parse(srtContent);
-      if (parsed.isNotEmpty) {
-        _cache[cacheKey] = parsed;
-        return parsed;
-      }
-    } catch (_) {}
-
-    if (langCode != 'en') {
-      try {
-        final fallbackPath = 'assets/dramas/$slug/sub/en/ep_$epPadded.srt';
-        final srtContent = await rootBundle.loadString(fallbackPath);
-        final parsed = SrtParser.parse(srtContent);
-        _cache[cacheKey] = parsed;
-        return parsed;
-      } catch (_) {}
-    }
-
-    return const [];
+    return _cache[cacheKey] ?? const [];
   }
 }
 
@@ -142,9 +175,8 @@ class VideoControllerFactory {
       allowBackgroundPlayback: false,
     );
 
-    final epPadded = episodeNo.toString().padLeft(3, '0');
-
     if (customStreamBaseUrl != null && customStreamBaseUrl.isNotEmpty) {
+      final epPadded = episodeNo.toString().padLeft(3, '0');
       final base = customStreamBaseUrl.replaceAll(RegExp(r'/$'), '');
       final url = '$base/${drama.slug}/video/ep_$epPadded.mp4';
       return VideoPlayerController.networkUrl(
@@ -153,14 +185,28 @@ class VideoControllerFactory {
       );
     }
 
-    final effectiveEp = episodeNo <= drama.bundledEpisodes
-        ? episodeNo
-        : ((episodeNo - 1) % drama.bundledEpisodes) + 1;
-    final assetEpPadded = effectiveEp.toString().padLeft(3, '0');
-    final assetPath = 'assets/dramas/${drama.slug}/video/ep_$assetEpPadded.mp4';
+    return VideoPlayerController.networkUrl(
+      Uri(),
+      videoPlayerOptions: options,
+    );
+  }
 
-    return VideoPlayerController.asset(
-      assetPath,
+  /// Creates an unauthenticated network controller for opaque stream URLs
+  /// (`/v1/stream/{token}.mp4` or full CDN URLs).
+  VideoPlayerController createFromUrl(String rawUrl) {
+    final options = VideoPlayerOptions(
+      mixWithOthers: false,
+      allowBackgroundPlayback: false,
+    );
+    final resolved = getIt<AppStartupCoordinator>().resolveMediaUrl(rawUrl);
+    if (resolved.isEmpty) {
+      return VideoPlayerController.networkUrl(
+        Uri(),
+        videoPlayerOptions: options,
+      );
+    }
+    return VideoPlayerController.networkUrl(
+      Uri.parse(resolved),
       videoPlayerOptions: options,
     );
   }

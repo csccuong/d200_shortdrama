@@ -92,7 +92,7 @@
             app:layout_constraintStart_toStartOf="@id/card_icon"
             app:layout_constraintTop_toBottomOf="@id/card_icon" />
 
-        <com.bobdrama.bobdrama_app.ShimmerButton
+        <com.reels.shortdrama.dramaseries.dramota.ShimmerButton
             android:id="@+id/ad_call_to_action"
             android:layout_width="0dp"
             android:layout_height="38dp"

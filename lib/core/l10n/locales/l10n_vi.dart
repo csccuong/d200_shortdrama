@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack viLanguagePack = LanguagePack(
   code: 'vi',
@@ -237,38 +237,6 @@ const LanguagePack viLanguagePack = LanguagePack(
     'Many Free Episodes': 'Nhiều tập miễn phí',
     'Stepmother / Mother-in-law': 'Gia đình / Hôn nhân',
   },
-  dramaTitles: {
-    '01_a_billionaires_love': 'Tình Yêu Tỷ Phú: Bí Mật Đứa Trẻ Mất Tích',
-    '02_the_tyrants_thoughts': 'Tâm Tư Của Bạo Chúa',
-    '03_dad_of_five_daughters': 'Ông Bố Của Năm Cô Con Gái',
-    '04_fortune_brides_revenge': 'Sự Trả Thù Của Cô Dâu Huyền Thuật',
-    '05_farm_girls_space': 'Không Gian Linh Tuyền Của Nông Nữ',
-    '06_system_ascension': 'Hệ Thống Thăng Cấp Đỉnh Cao',
-    '07_spirit_beasts_dominate': 'Linh Thú Thống Trị',
-    '08_roommate_past_love': 'Người Bạn Cùng Phòng Kiếp Trước',
-    '09_dragon_hidden_in_the_heart': 'Chân Long Ẩn Mình Trong Tim',
-    '10_fake_romance_turns_real': 'Tình Giả Hóa Tình Thật',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        'Để cứu mẹ, cô phải hy sinh danh tính và mất đi đứa con trai yêu quý nhất. Nhiều năm sau, bản năng người mẹ kéo cô đến gần cậu bé cô đơn — con trai của tổng tài quyền lực Murilo.',
-    '02_the_tyrants_thoughts':
-        'Nữ bác sĩ pháp y thời hiện đại Tống Vân Sơ bất ngờ xuyên không thành Hữu thừa tướng. Nhờ tài năng pháp y và hoàng đế đọc được tâm thuật, cô liên tiếp hóa giải âm mưu triều chính.',
-    '03_dad_of_five_daughters':
-        'Tần Lãng xuyên không về cổ đại và trở thành cha của năm cô con gái nhỏ trong cảnh nghèo khó. Anh quyết tâm gây dựng sự nghiệp từ hai bàn tay trắng để bảo vệ vợ con.',
-    '04_fortune_brides_revenge':
-        'Bậc thầy huyền thuật Triết Nguyệt bị ép gả thay vào phủ Yến Vương. Đêm tân hôn biến cố ập đến, cô sát cánh cùng Yến Tiêu Nhiên bảo vệ gia tộc và vạch trần kẻ phản bội.',
-    '05_farm_girls_space':
-        'Nữ lính đánh thuê xuyên không thành cô gái nông thôn bị ngược đãi, thức tỉnh không gian linh tuyền thần kỳ giúp chữa thương, trồng trọt và mở tửu lầu vang danh thiên hạ.',
-    '06_system_ascension':
-        'Chàng trai bình thường Trần Lạc vô tình kích hoạt Hệ thống Trợ giúp, nhận được kỹ năng siêu phàm và khối tài sản khổng lồ, từng bước làm chủ giới thương trường.',
-    '07_spirit_beasts_dominate':
-        'Thiếu gia giả Chu Diệp sau khi trọng sinh trở về quê nhà đã kích hoạt vòng tay cốt thú tổ truyền, mở ra Không gian Linh Mục nuôi dưỡng thần thú và vươn lên đỉnh cao.',
-    '08_roommate_past_love':
-        'Lý Hoàng Huyên đón cô bạn cùng phòng ngắn hạn Lâm Hi Mộng với cảm giác thân thuộc kỳ lạ, để rồi phát hiện ra sự thật cảm động về lời ước dưới sao băng ba năm trước.',
-    '09_dragon_hidden_in_the_heart':
-        'Chuyên gia tâm lý Hà Giao Giao hội ngộ mối tình đầu Chu Diên Thâm trong cuộc chiến gia tộc hào môn đầy kịch tính, nơi tình giả dần hóa thành chân tình.',
-    '10_fake_romance_turns_real':
-        'Trương Dương thuê cô gái cá tính Lý Tinh Hà làm bạn gái giả về ra mắt gia đình, không ngờ cô dẫn theo cả hai chị em đến sống chung và mở ra chuyện tình dở khóc dở cười.',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

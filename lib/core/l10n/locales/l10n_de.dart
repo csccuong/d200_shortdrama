@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack deLanguagePack = LanguagePack(
   code: 'de',
@@ -233,39 +233,6 @@ const LanguagePack deLanguagePack = LanguagePack(
     'Many Free Episodes': 'Viele Gratis-Folgen',
     'Stepmother / Mother-in-law': 'Familiendrama',
   },
-  dramaTitles: {
-    '01_a_billionaires_love':
-        'Die Liebe des Milliardärs: Das Geheimnis des Kindes',
-    '02_the_tyrants_thoughts': 'Die Gedanken des Tyrannen',
-    '03_dad_of_five_daughters': 'Vater von fünf Töchtern',
-    '04_fortune_brides_revenge': 'Die Rache der Schicksalsbraut',
-    '05_farm_girls_space': 'Der magische Raum des Bauernmädchens',
-    '06_system_ascension': 'Aufstieg durch das System',
-    '07_spirit_beasts_dominate': 'Herrschaft der Geisterbestien',
-    '08_roommate_past_love': 'Mitbewohnerin aus vergangener Liebe',
-    '09_dragon_hidden_in_the_heart': 'Der im Herzen verborgene Drache',
-    '10_fake_romance_turns_real': 'Aus falscher Romanze wird wahre Liebe',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        'Um ihre Mutter zu retten, verlor sie ihren Sohn. Jahre später zieht ein unerklärlicher Instinkt sie zum einsamen Sohn des mächtigen CEOs Murilo.',
-    '02_the_tyrants_thoughts':
-        'Die Gerichtsmedizinerin Song Yunchu landet in einer alten Dynastie, in der Kaiser Jun Lilu ihre Gedanken lesen kann.',
-    '03_dad_of_five_daughters':
-        'Qin Lang erwacht in der Vergangenheit als Vater von fünf Töchtern und baut aus dem Nichts ein Handelsimperium für seine Familie auf.',
-    '04_fortune_brides_revenge':
-        'Die Metaphysik-Meisterin Zhe Yue geht eine Ersatzheirat ein und kämpft an der Seite von Yan Xiaoran gegen eine Intrige.',
-    '05_farm_girls_space':
-        'Eine Söldnerin erwacht als Bauernmädchen und entdeckt eine magische Heilquelle, mit der sie ihre Familie schützt und reich wird.',
-    '06_system_ascension':
-        'Chen Luo aktiviert ein Hilfssystem, das ihm überragende Fähigkeiten und Reichtum verleiht, um die Geschäftswelt zu erobern.',
-    '07_spirit_beasts_dominate':
-        'Nach seiner Wiedergeburt aktiviert Zhou Ye ein Ahnenarmband, das einen Geisterweide-Raum zur Aufzucht göttlicher Bestien öffnet.',
-    '08_roommate_past_love':
-        'Li Huangxuan nimmt die Mitbewohnerin Lin Ximeng auf und erinnert sich schließlich an ihr Opfer unter einer Sternschnuppe vor drei Jahren.',
-    '09_dragon_hidden_in_the_heart':
-        'He Jiaojiao trifft ihre erste Liebe Zhou Yanshen in einem Erbschaftskampf wieder, in dem aus einer Scheinehe wahre Liebe wird.',
-    '10_fake_romance_turns_real':
-        'Unter Heiratsdruck engagiert Zhang Yang die temperamentvolle Li Xinghe als falsche Freundin – bis echte Gefühle entstehen.',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

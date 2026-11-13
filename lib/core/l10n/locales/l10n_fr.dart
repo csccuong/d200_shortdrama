@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack frLanguagePack = LanguagePack(
   code: 'fr',
@@ -233,39 +233,6 @@ const LanguagePack frLanguagePack = LanguagePack(
     'Many Free Episodes': 'Nombreux épisodes gratuits',
     'Stepmother / Mother-in-law': 'Drame familial',
   },
-  dramaTitles: {
-    '01_a_billionaires_love':
-        'L’Amour d’un Milliardaire : Le Secret de l’Enfant',
-    '02_the_tyrants_thoughts': 'Les Pensées du Tyran',
-    '03_dad_of_five_daughters': 'Père de Cinq Filles',
-    '04_fortune_brides_revenge': 'La Vengeance de la Mariée Mystique',
-    '05_farm_girls_space': 'L’Espace Sacré de la Fermière',
-    '06_system_ascension': 'Ascension par le Système',
-    '07_spirit_beasts_dominate': 'Le Règne des Bêtes Spirituelles',
-    '08_roommate_past_love': 'Colocataire et Amour d’Autrefois',
-    '09_dragon_hidden_in_the_heart': 'Le Dragon Caché dans le Cœur',
-    '10_fake_romance_turns_real': 'Quand la Fausse Romance Devient Réelle',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        'Pour sauver sa mère, elle a perdu son fils. Des années plus tard, son instinct la rapproche du fils solitaire du puissant PDG Murilo.',
-    '02_the_tyrants_thoughts':
-        'La médecin légiste Song Yunchu se retrouve dans une dynastie ancienne face à l’empereur Jun Lilu capable de lire dans ses pensées.',
-    '03_dad_of_five_daughters':
-        'Qin Lang voyage dans le temps et devient père de cinq filles. Il bâtit une fortune à partir de rien pour offrir un avenir à sa famille.',
-    '04_fortune_brides_revenge':
-        'Experte en métaphysique, Zhe Yue accepte un mariage arrangé et s’allie à Yan Xiaoran pour sauver une famille loyale du complot.',
-    '05_farm_girls_space':
-        'Une mercenaire renaît en jeune fermière et éveille une source spirituelle magique qui lui permet de protéger les siens et de prospérer.',
-    '06_system_ascension':
-        'Chen Luo active un système extraordinaire qui lui confère talents et richesses pour triompher de tous ses rivaux.',
-    '07_spirit_beasts_dominate':
-        'De retour dans sa famille biologique, Zhou Ye active un bracelet ancestral permettant d’élever des bêtes divines.',
-    '08_roommate_past_love':
-        'Li Huangxuan accueille sa colocataire Lin Ximeng avant de retrouver la mémoire sur le sacrifice qu’elle a fait pour lui trois ans plus tôt.',
-    '09_dragon_hidden_in_the_heart':
-        'He Jiaojiao retrouve son premier amour Zhou Yanshen au cœur d’une lutte d’héritage où leur fausse relation devient réelle.',
-    '10_fake_romance_turns_real':
-        'Sous pression familiale, Zhang Yang engage Li Xinghe comme fausse petite amie, mais leurs sentiments deviennent vite bien réels.',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

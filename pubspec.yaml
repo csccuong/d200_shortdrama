@@ -1,4 +1,4 @@
-﻿name: dxx_shortdrama
+name: dxx_shortdrama
 description: "DXX ShortDrama Streaming App (Flutter)"
 publish_to: 'none'
 version: 1.0.0+1
@@ -20,6 +20,13 @@ dependencies:
   firebase_remote_config: ^5.0.1
   adjust_sdk: ^5.6.2
   package_info_plus: ^8.1.2
+  dio: ^5.7.0
+  cryptography: ^2.7.0
+  crypto: ^3.0.6
+  uuid: ^4.5.1
+  device_info_plus: ^11.1.0
+  flutter_secure_storage: ^9.2.4
+  connectivity_plus: ^6.1.2
   lottie: ^3.1.0
   country_flags: 4.1.2
   easy_ads_flutter:
@@ -37,130 +44,9 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/dramas/
     - assets/images/
     - assets/icons/
     - assets/json/
-    - assets/dramas/01_a_billionaires_love/
-    - assets/dramas/01_a_billionaires_love/video/
-    - assets/dramas/01_a_billionaires_love/sub/ar/
-    - assets/dramas/01_a_billionaires_love/sub/de/
-    - assets/dramas/01_a_billionaires_love/sub/en/
-    - assets/dramas/01_a_billionaires_love/sub/es/
-    - assets/dramas/01_a_billionaires_love/sub/fr/
-    - assets/dramas/01_a_billionaires_love/sub/ja/
-    - assets/dramas/01_a_billionaires_love/sub/ko/
-    - assets/dramas/01_a_billionaires_love/sub/pt/
-    - assets/dramas/01_a_billionaires_love/sub/th/
-    - assets/dramas/01_a_billionaires_love/sub/vi/
-    - assets/dramas/02_the_tyrants_thoughts/
-    - assets/dramas/02_the_tyrants_thoughts/video/
-    - assets/dramas/02_the_tyrants_thoughts/sub/ar/
-    - assets/dramas/02_the_tyrants_thoughts/sub/de/
-    - assets/dramas/02_the_tyrants_thoughts/sub/en/
-    - assets/dramas/02_the_tyrants_thoughts/sub/es/
-    - assets/dramas/02_the_tyrants_thoughts/sub/fr/
-    - assets/dramas/02_the_tyrants_thoughts/sub/ja/
-    - assets/dramas/02_the_tyrants_thoughts/sub/ko/
-    - assets/dramas/02_the_tyrants_thoughts/sub/pt/
-    - assets/dramas/02_the_tyrants_thoughts/sub/th/
-    - assets/dramas/02_the_tyrants_thoughts/sub/vi/
-    - assets/dramas/03_dad_of_five_daughters/
-    - assets/dramas/03_dad_of_five_daughters/video/
-    - assets/dramas/03_dad_of_five_daughters/sub/ar/
-    - assets/dramas/03_dad_of_five_daughters/sub/de/
-    - assets/dramas/03_dad_of_five_daughters/sub/en/
-    - assets/dramas/03_dad_of_five_daughters/sub/es/
-    - assets/dramas/03_dad_of_five_daughters/sub/fr/
-    - assets/dramas/03_dad_of_five_daughters/sub/ja/
-    - assets/dramas/03_dad_of_five_daughters/sub/ko/
-    - assets/dramas/03_dad_of_five_daughters/sub/pt/
-    - assets/dramas/03_dad_of_five_daughters/sub/th/
-    - assets/dramas/03_dad_of_five_daughters/sub/vi/
-    - assets/dramas/04_fortune_brides_revenge/
-    - assets/dramas/04_fortune_brides_revenge/video/
-    - assets/dramas/04_fortune_brides_revenge/sub/ar/
-    - assets/dramas/04_fortune_brides_revenge/sub/de/
-    - assets/dramas/04_fortune_brides_revenge/sub/en/
-    - assets/dramas/04_fortune_brides_revenge/sub/es/
-    - assets/dramas/04_fortune_brides_revenge/sub/fr/
-    - assets/dramas/04_fortune_brides_revenge/sub/ja/
-    - assets/dramas/04_fortune_brides_revenge/sub/ko/
-    - assets/dramas/04_fortune_brides_revenge/sub/pt/
-    - assets/dramas/04_fortune_brides_revenge/sub/th/
-    - assets/dramas/04_fortune_brides_revenge/sub/vi/
-    - assets/dramas/05_farm_girls_space/
-    - assets/dramas/05_farm_girls_space/video/
-    - assets/dramas/05_farm_girls_space/sub/ar/
-    - assets/dramas/05_farm_girls_space/sub/de/
-    - assets/dramas/05_farm_girls_space/sub/en/
-    - assets/dramas/05_farm_girls_space/sub/es/
-    - assets/dramas/05_farm_girls_space/sub/fr/
-    - assets/dramas/05_farm_girls_space/sub/ja/
-    - assets/dramas/05_farm_girls_space/sub/ko/
-    - assets/dramas/05_farm_girls_space/sub/pt/
-    - assets/dramas/05_farm_girls_space/sub/th/
-    - assets/dramas/05_farm_girls_space/sub/vi/
-    - assets/dramas/06_system_ascension/
-    - assets/dramas/06_system_ascension/video/
-    - assets/dramas/06_system_ascension/sub/ar/
-    - assets/dramas/06_system_ascension/sub/de/
-    - assets/dramas/06_system_ascension/sub/en/
-    - assets/dramas/06_system_ascension/sub/es/
-    - assets/dramas/06_system_ascension/sub/fr/
-    - assets/dramas/06_system_ascension/sub/ja/
-    - assets/dramas/06_system_ascension/sub/ko/
-    - assets/dramas/06_system_ascension/sub/pt/
-    - assets/dramas/06_system_ascension/sub/th/
-    - assets/dramas/06_system_ascension/sub/vi/
-    - assets/dramas/07_spirit_beasts_dominate/
-    - assets/dramas/07_spirit_beasts_dominate/video/
-    - assets/dramas/07_spirit_beasts_dominate/sub/ar/
-    - assets/dramas/07_spirit_beasts_dominate/sub/de/
-    - assets/dramas/07_spirit_beasts_dominate/sub/en/
-    - assets/dramas/07_spirit_beasts_dominate/sub/es/
-    - assets/dramas/07_spirit_beasts_dominate/sub/fr/
-    - assets/dramas/07_spirit_beasts_dominate/sub/ja/
-    - assets/dramas/07_spirit_beasts_dominate/sub/ko/
-    - assets/dramas/07_spirit_beasts_dominate/sub/pt/
-    - assets/dramas/07_spirit_beasts_dominate/sub/th/
-    - assets/dramas/07_spirit_beasts_dominate/sub/vi/
-    - assets/dramas/08_roommate_past_love/
-    - assets/dramas/08_roommate_past_love/video/
-    - assets/dramas/08_roommate_past_love/sub/ar/
-    - assets/dramas/08_roommate_past_love/sub/de/
-    - assets/dramas/08_roommate_past_love/sub/en/
-    - assets/dramas/08_roommate_past_love/sub/es/
-    - assets/dramas/08_roommate_past_love/sub/fr/
-    - assets/dramas/08_roommate_past_love/sub/ja/
-    - assets/dramas/08_roommate_past_love/sub/ko/
-    - assets/dramas/08_roommate_past_love/sub/pt/
-    - assets/dramas/08_roommate_past_love/sub/th/
-    - assets/dramas/08_roommate_past_love/sub/vi/
-    - assets/dramas/09_dragon_hidden_in_the_heart/
-    - assets/dramas/09_dragon_hidden_in_the_heart/video/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/ar/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/de/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/en/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/es/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/fr/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/ja/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/ko/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/pt/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/th/
-    - assets/dramas/09_dragon_hidden_in_the_heart/sub/vi/
-    - assets/dramas/10_fake_romance_turns_real/
-    - assets/dramas/10_fake_romance_turns_real/video/
-    - assets/dramas/10_fake_romance_turns_real/sub/ar/
-    - assets/dramas/10_fake_romance_turns_real/sub/de/
-    - assets/dramas/10_fake_romance_turns_real/sub/en/
-    - assets/dramas/10_fake_romance_turns_real/sub/es/
-    - assets/dramas/10_fake_romance_turns_real/sub/fr/
-    - assets/dramas/10_fake_romance_turns_real/sub/ja/
-    - assets/dramas/10_fake_romance_turns_real/sub/ko/
-    - assets/dramas/10_fake_romance_turns_real/sub/pt/
-    - assets/dramas/10_fake_romance_turns_real/sub/th/
-    - assets/dramas/10_fake_romance_turns_real/sub/vi/
 
 flutter_launcher_icons:
   android: "ic_launcher"

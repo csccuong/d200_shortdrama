@@ -61,7 +61,7 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <com.bobdrama.bobdrama_app.ShimmerButton
+            <com.reels.shortdrama.dramaseries.dramota.ShimmerButton
                 android:id="@+id/ad_call_to_action"
                 android:layout_width="100dp"
                 android:layout_height="38dp"

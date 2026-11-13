@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack koLanguagePack = LanguagePack(
   code: 'ko',
@@ -223,38 +223,6 @@ const LanguagePack koLanguagePack = LanguagePack(
     'Many Free Episodes': '무료 회차 다수',
     'Stepmother / Mother-in-law': '가족 드라마',
   },
-  dramaTitles: {
-    '01_a_billionaires_love': '억만장자의 사랑: 사라진 아이의 비밀',
-    '02_the_tyrants_thoughts': '폭군의 속마음',
-    '03_dad_of_five_daughters': '다섯 딸의 아빠가 되다',
-    '04_fortune_brides_revenge': '천재 신부의 복수',
-    '05_farm_girls_space': '농가 소녀의 영천 공간',
-    '06_system_ascension': '시스템 초월 각성',
-    '07_spirit_beasts_dominate': '영수 목장의 지배자',
-    '08_roommate_past_love': '룸메이트와의 지난 사랑',
-    '09_dragon_hidden_in_the_heart': '가슴속에 숨겨진 진룡',
-    '10_fake_romance_turns_real': '가짜 연애가 진짜가 될 때',
-  },
-  dramaDescriptions: {
-    '01_a_billionaires_love':
-        '어머니를 구하기 위해 이름과 아들을 잃은 그녀. 몇 년 후 운명처럼 재벌 회장 무릴로의 외로운 아들에게 이끌리며 숨겨진 진실과 마주한다.',
-    '02_the_tyrants_thoughts':
-        '현대 법의학자 송운초가 고대 왕조의 우승상으로 빙의한다. 마음을 읽는 황제 군리로와 함께 법의학 지식으로 궁중의 위기를 해결해 나간다.',
-    '03_dad_of_five_daughters':
-        '고대로 타임슬립해 다섯 딸의 아빠가 된 진랑. 가난한 집안을 일으키고 다섯 딸에게 행복한 미래를 주기 위해 맨손으로 사업을 시작한다.',
-    '04_fortune_brides_revenge':
-        '현학의 대가 절월은 대리 혼인으로 연왕부에 들어간다. 혼례날 밤 봉쇄된 가문을 지키기 위해 연소연과 손을 잡고 역모를 파헤친다.',
-    '05_farm_girls_space':
-        '용병이었던 그녀가 학대받던 농가 소녀로 환생해 영천 공간을 각성한다. 어머니와 동생을 지키고 대식당을 열며 통쾌한 인생 역전을 이룬다.',
-    '06_system_ascension':
-        '평범한 청년 진락이 우연히 조력 시스템을 각성해 재력과 초능력을 얻고, 거대 기업과 프로젝트를 평정하며 정점에 오른다.',
-    '07_spirit_beasts_dominate':
-        '가짜 도련님 주엽이 환생 후 조상의 수골 팔찌를 각성해 영수 목장 시스템을 열고 신수를 부화시키며 가문을 일으킨다.',
-    '08_roommate_past_love':
-        '단기 룸메이트 임희몽에게 묘한 익숙함을 느낀 이황현. 그녀가 떠난 뒤 3년 전 유성우 아래서 맺은 애틋한 비밀을 기억해낸다.',
-    '09_dragon_hidden_in_the_heart':
-        '감정 전문가 하교교가 첫사랑 주연심과 재회해 재벌가의 상속 전쟁과 복수극에 뛰어들며 가짜 연애가 진짜 사랑으로 변해간다.',
-    '10_fake_romance_turns_real':
-        '결혼 압박에 시달리던 장양이 당찬 여성 이성하를 가짜 여자친구로 고용하면서 벌어지는 유쾌하고 설레는 로맨스.',
-  },
+  dramaTitles: {},
+  dramaDescriptions: {},
 );

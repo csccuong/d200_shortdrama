@@ -3,10 +3,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../core/constants/app_constants.dart';
 import '../core/di/injection.dart';
+import '../core/startup/app_startup_coordinator.dart';
 import '../models/drama_models.dart';
+import '../services/api/app_api_service.dart';
+import '../services/api/home_api_service.dart';
+import '../services/api/feed_api_service.dart';
+import '../services/api/drama_api_service.dart';
+import '../services/api/mylist_api_service.dart';
+import '../services/api/rewards_api_service.dart';
+import '../services/api/account_api_service.dart';
+import '../services/api/event_tracker_service.dart';
 import '../services/app_strings.dart';
 import '../services/guest_identity_service.dart';
 import '../services/shared_preference_service.dart';
+
+export 'session_provider.dart';
+export 'home_provider.dart';
+export 'feed_provider.dart';
+export 'drama_provider.dart';
+export 'rewards_provider.dart';
+export 'wallet_provider.dart';
+export 'mylist_provider.dart';
+export 'account_provider.dart';
 
 // ============================================================================
 // 0. DI SERVICE PROVIDERS (Bridging GetIt -> Riverpod)
@@ -214,6 +232,22 @@ class UserWalletNotifier extends Notifier<UserWalletState> {
     unawaited(SharedPreferenceService.setIsPremiumUser(true));
   }
 
+  void syncFromApi({
+    required bool isVip,
+    String? vipPlanName,
+    bool? autoPlayNext,
+    double? playbackSpeed,
+  }) {
+    AppConstants.isPremiumUser.value = isVip;
+    unawaited(SharedPreferenceService.setIsPremiumUser(isVip));
+    state = state.copyWith(
+      isVip: isVip,
+      vipPlanName: vipPlanName ?? (isVip ? state.vipPlanName : 'FREE'),
+      autoPlayNext: autoPlayNext,
+      playbackSpeed: playbackSpeed,
+    );
+  }
+
   void toggleVip() {
     final nextVip = !state.isVip;
     state = state.copyWith(isVip: nextVip);
@@ -361,3 +395,47 @@ VideoPlayerController createDramaVideoController({
     customStreamBaseUrl: customStreamBaseUrl,
   );
 }
+
+// ============================================================================
+// 5. API SERVICE PROVIDERS (Bridging GetIt -> Riverpod for new API services)
+// ============================================================================
+
+final appStartupCoordinatorProvider = Provider<AppStartupCoordinator>((ref) {
+  return inject<AppStartupCoordinator>();
+});
+
+final appApiServiceProvider = Provider<AppApiService>((ref) {
+  return inject<AppApiService>();
+});
+
+final homeApiServiceProvider = Provider<HomeApiService>((ref) {
+  return inject<HomeApiService>();
+});
+
+final feedApiServiceProvider = Provider<FeedApiService>((ref) {
+  return inject<FeedApiService>();
+});
+
+final dramaApiServiceProvider = Provider<DramaApiService>((ref) {
+  return inject<DramaApiService>();
+});
+
+final mylistApiServiceProvider = Provider<MyListApiService>((ref) {
+  return inject<MyListApiService>();
+});
+
+final rewardsApiServiceProvider = Provider<RewardsApiService>((ref) {
+  return inject<RewardsApiService>();
+});
+
+final accountApiServiceProvider = Provider<AccountApiService>((ref) {
+  return inject<AccountApiService>();
+});
+
+final eventTrackerProvider = Provider<DramaEventTracker>((ref) {
+  return inject<DramaEventTracker>();
+});
+
+// ============================================================================
+// 6. RE-EXPORTS — New Provider Files
+// ============================================================================

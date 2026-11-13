@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/screen_utils.dart';
@@ -5,17 +6,24 @@ import '../providers/app_providers.dart';
 import '../services/app_strings.dart';
 
 class PlayerSettingsSheet extends ConsumerWidget {
-  const PlayerSettingsSheet({super.key});
+  final List<String>? availableSubLangs;
+
+  const PlayerSettingsSheet({super.key, this.availableSubLangs});
 
   static const List<double> _speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
-  static void show(BuildContext context) {
+  static void show(
+    BuildContext context, {
+    List<String>? availableSubLangs,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.transparent,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => const PlayerSettingsSheet(),
+      builder: (_) => PlayerSettingsSheet(
+        availableSubLangs: availableSubLangs,
+      ),
     );
   }
 
@@ -113,8 +121,15 @@ class PlayerSettingsSheet extends ConsumerWidget {
                         activeThumbColor: AppColors.primary,
                         activeTrackColor:
                             AppColors.primary.withValues(alpha: 0.35),
-                        onChanged: (val) =>
-                            localeNotifier.toggleSubtitlesEnabled(val),
+                        onChanged: (val) {
+                          localeNotifier.toggleSubtitlesEnabled(val);
+                          unawaited(
+                            ref.read(accountProvider.notifier).updateSettings(
+                                  subtitleLanguage:
+                                      val ? locale.subtitleLanguage : 'off',
+                                ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -127,18 +142,40 @@ class PlayerSettingsSheet extends ConsumerWidget {
                     SizedBox(height: 8.h),
                     SizedBox(
                       height: 34.h,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        physics: AppScreenUtils.adaptiveScrollPhysics,
-                        itemCount: AppStrings.supportedLanguages.length,
-                        separatorBuilder: (_, _) => SizedBox(width: 8.w),
-                        itemBuilder: (context, idx) {
-                          final opt = AppStrings.supportedLanguages[idx];
-                          final isSelected =
-                              opt.code == locale.subtitleLanguage;
-                          return GestureDetector(
-                            onTap: () =>
-                                localeNotifier.setSubtitleLanguage(opt.code),
+                      child: Builder(
+                        builder: (context) {
+                          final langOptions = (availableSubLangs != null &&
+                                  availableSubLangs!.isNotEmpty)
+                              ? AppStrings.supportedLanguages
+                                  .where((o) => availableSubLangs!
+                                      .any((c) =>
+                                          c.toLowerCase() ==
+                                          o.code.toLowerCase()))
+                                  .toList()
+                              : AppStrings.supportedLanguages;
+                          final displayOptions = langOptions.isNotEmpty
+                              ? langOptions
+                              : AppStrings.supportedLanguages;
+                          return ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: AppScreenUtils.adaptiveScrollPhysics,
+                            itemCount: displayOptions.length,
+                            separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                            itemBuilder: (context, idx) {
+                              final opt = displayOptions[idx];
+                              final isSelected =
+                                  opt.code == locale.subtitleLanguage;
+                              return GestureDetector(
+                                onTap: () {
+                                  localeNotifier.setSubtitleLanguage(opt.code);
+                                  unawaited(
+                                    ref
+                                        .read(accountProvider.notifier)
+                                        .updateSettings(
+                                          subtitleLanguage: opt.code,
+                                        ),
+                                  );
+                                },
                             child: Container(
                               padding: EdgeInsets.symmetric(horizontal: 11.w),
                               alignment: Alignment.center,
@@ -168,6 +205,8 @@ class PlayerSettingsSheet extends ConsumerWidget {
                                 ],
                               ),
                             ),
+                          );
+                            },
                           );
                         },
                       ),
@@ -207,7 +246,14 @@ class PlayerSettingsSheet extends ConsumerWidget {
                     activeThumbColor: AppColors.primary,
                     activeTrackColor:
                         AppColors.primary.withValues(alpha: 0.35),
-                    onChanged: (val) => walletNotifier.setAutoPlayNext(val),
+                    onChanged: (val) {
+                      walletNotifier.setAutoPlayNext(val);
+                      unawaited(
+                        ref.read(accountProvider.notifier).updateSettings(
+                              autoPlayNext: val,
+                            ),
+                      );
+                    },
                   ),
                 ],
               ),

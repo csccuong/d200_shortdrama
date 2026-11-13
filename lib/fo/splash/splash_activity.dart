@@ -189,30 +189,10 @@ class _TiltedDriftingPosterWall extends StatelessWidget {
   });
 
   static const List<List<String>> _posterColumns = [
-    [
-      'assets/dramas/01_a_billionaires_love/poster.jpg',
-      'assets/dramas/05_farm_girls_space/poster.jpg',
-      'assets/dramas/09_dragon_hidden_in_the_heart/poster.jpg',
-      'assets/dramas/03_dad_of_five_daughters/poster.jpg',
-    ],
-    [
-      'assets/dramas/02_the_tyrants_thoughts/poster.jpg',
-      'assets/dramas/06_system_ascension/poster.jpg',
-      'assets/dramas/10_fake_romance_turns_real/poster.jpg',
-      'assets/dramas/07_spirit_beasts_dominate/poster.jpg',
-    ],
-    [
-      'assets/dramas/04_fortune_brides_revenge/poster.jpg',
-      'assets/dramas/08_roommate_past_love/poster.jpg',
-      'assets/dramas/05_farm_girls_space/poster.jpg',
-      'assets/dramas/01_a_billionaires_love/poster.jpg',
-    ],
-    [
-      'assets/dramas/03_dad_of_five_daughters/poster.jpg',
-      'assets/dramas/07_spirit_beasts_dominate/poster.jpg',
-      'assets/dramas/02_the_tyrants_thoughts/poster.jpg',
-      'assets/dramas/09_dragon_hidden_in_the_heart/poster.jpg',
-    ],
+    ['', '', '', ''],
+    ['', '', '', ''],
+    ['', '', '', ''],
+    ['', '', '', ''],
   ];
 
   static const List<double> _phaseOffsets = [0.0, 0.37, 0.18, 0.61];
@@ -329,19 +309,25 @@ class _PosterWallTile extends StatelessWidget {
         gradient: AppColors.splashPosterFallbackGradient,
       ),
       clipBehavior: Clip.antiAlias,
-      child: Image.asset(
-        assetPath,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        cacheWidth: 260,
-        filterQuality: FilterQuality.low,
-        errorBuilder: (_, _, _) => const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: AppColors.splashPosterFallbackGradient,
-          ),
-        ),
-      ),
+      child: assetPath.isEmpty
+          ? const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: AppColors.splashPosterFallbackGradient,
+              ),
+            )
+          : Image.asset(
+              assetPath,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              cacheWidth: 260,
+              filterQuality: FilterQuality.low,
+              errorBuilder: (_, _, _) => const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: AppColors.splashPosterFallbackGradient,
+                ),
+              ),
+            ),
     );
   }
 }

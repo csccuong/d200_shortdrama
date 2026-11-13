@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/screen_utils.dart';
@@ -91,8 +92,36 @@ class LanguagePickerSheet extends ConsumerWidget {
                   final isSelected = opt.code == locale.appLanguage;
                   return InkWell(
                     onTap: () {
+                      final prevCode = locale.appLanguage;
                       localeNotifier.setAppLanguage(opt.code);
                       Navigator.pop(context);
+                      if (opt.code != prevCode) {
+                        unawaited(
+                          Future(() async {
+                            await ref
+                                .read(accountProvider.notifier)
+                                .updateSettings(
+                                  appLanguage: opt.code,
+                                  subtitleLanguage: opt.code,
+                                );
+                            await Future.wait([
+                              ref
+                                  .read(homeProvider.notifier)
+                                  .fetchHome(opt.code),
+                              ref
+                                  .read(feedProvider.notifier)
+                                  .fetchInitialFeed(opt.code),
+                              ref
+                                  .read(rewardsProvider.notifier)
+                                  .fetchOverview(opt.code),
+                            ]);
+                          }),
+                        );
+                        ref.read(eventTrackerProvider).track(
+                              'language_change',
+                              props: {'lang': opt.code},
+                            );
+                      }
                     },
                     borderRadius: BorderRadius.circular(10.r),
                     child: Container(

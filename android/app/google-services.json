@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "998827899018",
+    "project_id": "d200-dramota---short-drama",
+    "storage_bucket": "d200-dramota---short-drama.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:998827899018:android:51f4ccc1487dee13bb5573",
+        "android_client_info": {
+          "package_name": "com.reels.shortdrama.dramaseries.dramota"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBE4gk7PFoBd9s58meY64t9zQyJ6tJmVdw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

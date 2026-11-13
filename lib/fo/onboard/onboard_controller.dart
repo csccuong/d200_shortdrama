@@ -228,7 +228,7 @@ class OnboardController extends ChangeNotifier {
         titleKey: 'onboard_title_1',
         descKey: 'onboard_desc_1',
         image: 'assets/images/onboard1.webp',
-        fallbackPoster: 'assets/dramas/01_a_billionaires_love/poster.jpg',
+        fallbackPoster: '',
         adId: showAdOnboard1 ? MyAdIdName.nativeOnboard1Ad.getId : '',
         adIdName: showAdOnboard1 ? MyAdIdName.nativeOnboard1Ad : null,
         factoryId: showAdOnboard1 ? NativeFactoryId.nativeMedia : '',
@@ -237,7 +237,7 @@ class OnboardController extends ChangeNotifier {
         titleKey: 'onboard_title_2',
         descKey: 'onboard_desc_2',
         image: 'assets/images/onboard2.webp',
-        fallbackPoster: 'assets/dramas/02_the_tyrants_thoughts/poster.jpg',
+        fallbackPoster: '',
       ),
     ];
 
@@ -250,7 +250,7 @@ class OnboardController extends ChangeNotifier {
         titleKey: 'onboard_title_3',
         descKey: 'onboard_desc_3',
         image: 'assets/images/onboard3.webp',
-        fallbackPoster: 'assets/dramas/04_fortune_brides_revenge/poster.jpg',
+        fallbackPoster: '',
       ),
     );
 
@@ -263,7 +263,7 @@ class OnboardController extends ChangeNotifier {
         titleKey: 'onboard_title_4',
         descKey: 'onboard_desc_4',
         image: 'assets/images/onboard4.webp',
-        fallbackPoster: 'assets/dramas/10_fake_romance_turns_real/poster.jpg',
+        fallbackPoster: '',
         adId: showAdOnboard4 ? MyAdIdName.nativeOnboard4Ad.getId : '',
         adIdName: showAdOnboard4 ? MyAdIdName.nativeOnboard4Ad : null,
         factoryId: showAdOnboard4 ? NativeFactoryId.nativeMedia : '',

@@ -1,4 +1,4 @@
-﻿import '../language_pack.dart';
+import '../language_pack.dart';
 
 const LanguagePack enLanguagePack = LanguagePack(
   code: 'en',
@@ -233,17 +233,6 @@ const LanguagePack enLanguagePack = LanguagePack(
     'Many Free Episodes': 'Many Free Episodes',
     'Stepmother / Mother-in-law': 'Family Drama',
   },
-  dramaTitles: {
-    '01_a_billionaires_love': 'A Billionaire’s Love: The Missing Child’s Secret',
-    '02_the_tyrants_thoughts': 'The Tyrant\'s Thoughts',
-    '03_dad_of_five_daughters': 'Dad of Five Daughters',
-    '04_fortune_brides_revenge': 'Fortune Bride\'s Revenge',
-    '05_farm_girls_space': 'Farm Girl’s Space',
-    '06_system_ascension': 'System Ascension',
-    '07_spirit_beasts_dominate': 'Spirit Beasts Dominate',
-    '08_roommate_past_love': 'Roommate Past Love',
-    '09_dragon_hidden_in_the_heart': 'Dragon Hidden in the Heart',
-    '10_fake_romance_turns_real': 'Fake Romance Turns Real',
-  },
+  dramaTitles: {},
   dramaDescriptions: {},
 );

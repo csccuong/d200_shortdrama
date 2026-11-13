@@ -130,13 +130,15 @@ class _OnboardActivityState extends ConsumerState<OnboardActivity> {
                 step.image,
                 fit: step.fit,
                 width: double.infinity,
-                errorBuilder: (_, _, _) => Image.asset(
-                  step.fallbackPoster,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
-                  errorBuilder: (_, _, _) =>
-                      const ColoredBox(color: AppColors.surface),
-                ),
+                errorBuilder: (_, _, _) => step.fallbackPoster.isNotEmpty
+                    ? Image.asset(
+                        step.fallbackPoster,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        errorBuilder: (_, _, _) =>
+                            const ColoredBox(color: AppColors.surface),
+                      )
+                    : const ColoredBox(color: AppColors.surface),
               ),
               const DecoratedBox(
                 decoration: BoxDecoration(

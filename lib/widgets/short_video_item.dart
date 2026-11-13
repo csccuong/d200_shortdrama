@@ -1,34 +1,52 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
+import '../ads/const/ad_id_extension.dart';
+import '../ads/const/ad_id_name.dart';
 import '../ads/placement/show_placement_ad.dart';
+import '../core/network/drama_dio_interceptor.dart';
 import '../core/utils/screen_utils.dart';
+import '../models/drama_card.dart';
 import '../models/drama_models.dart';
+import '../models/feed_response.dart';
+import '../models/play_response.dart';
 import '../providers/app_providers.dart';
 import '../services/app_strings.dart';
 import '../services/srt_parser.dart';
+import 'drama_network_image.dart';
 import 'player_settings_sheet.dart';
 
 class ShortVideoItem extends ConsumerStatefulWidget {
-  final Drama drama;
+  final DramaCard drama;
   final int episodeNo;
   final bool isActive;
+  final PreviewInfo? previewInfo;
+  final int initialPositionSec;
+  final String sourceScreen;
   final VoidCallback? onVideoEnded;
   final FutureOr<void> Function()? onOpenEpisodeList;
   final VoidCallback? onOpenFullDrama;
   final bool showFullDramaButton;
+  final void Function(int episodeNo, bool fullDrama)? onEpisodeUnlocked;
+  final void Function(int posSec, int durSec, bool isPlaying)? onPlaybackUpdate;
 
   const ShortVideoItem({
     super.key,
     required this.drama,
     required this.episodeNo,
     required this.isActive,
+    this.previewInfo,
+    this.initialPositionSec = 0,
+    this.sourceScreen = 'player',
     this.onVideoEnded,
     this.onOpenEpisodeList,
     this.onOpenFullDrama,
     this.showFullDramaButton = false,
+    this.onEpisodeUnlocked,
+    this.onPlaybackUpdate,
   });
 
   @override
@@ -48,86 +66,222 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       'assets/icons/ic_player_subtitle_selected.png';
 
   VideoPlayerController? _controller;
+  List<SubtitleTrack> _subTracks = [];
   List<SubtitleCue> _cues = [];
   String? _activeSubtitle;
+
+  bool _isLoadingPlay = false;
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
+
+  PaywallResponse? _paywall;
+  String _blockReason = '';
+  bool _isUnlocking = false;
+
   bool _isPausedByUser = false;
   bool _didTriggerEnd = false;
-  bool _isWatchingAd = false;
+  bool _didApplyInitialSeek = false;
   bool _isEpisodeSheetOpen = false;
+  bool _hasRequestedPlay = false;
+  int _lastTickEmitSec = -1;
+
+  int? _likeCountOverride;
+  bool? _isLikedOverride;
+  int? _shareCountOverride;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _initEpisode();
+      if (!mounted) return;
+      if (widget.previewInfo != null || widget.isActive) {
+        _initEpisode();
+      }
     });
   }
 
   @override
   void didUpdateWidget(covariant ShortVideoItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.drama.slug != widget.drama.slug ||
-        oldWidget.episodeNo != widget.episodeNo) {
+    if (oldWidget.drama.dramaId != widget.drama.dramaId ||
+        oldWidget.episodeNo != widget.episodeNo ||
+        oldWidget.previewInfo?.videoUrl != widget.previewInfo?.videoUrl) {
       _disposeController();
-      _initEpisode();
+      _resetEpisodeState();
+      if (widget.previewInfo != null || widget.isActive) {
+        _initEpisode();
+      }
     } else if (oldWidget.isActive != widget.isActive) {
-      _updatePlaybackState();
+      if (widget.isActive &&
+          !_hasRequestedPlay &&
+          _paywall == null &&
+          !_isInitialized) {
+        _initEpisode();
+      } else {
+        _updatePlaybackState();
+      }
     }
   }
 
+  void _resetEpisodeState() {
+    _isLoadingPlay = false;
+    _isInitialized = false;
+    _hasError = false;
+    _errorMessage = '';
+    _paywall = null;
+    _blockReason = '';
+    _isPausedByUser = false;
+    _didTriggerEnd = false;
+    _didApplyInitialSeek = false;
+    _hasRequestedPlay = false;
+    _subTracks = [];
+    _cues = [];
+    _activeSubtitle = null;
+    _lastTickEmitSec = -1;
+  }
+
   Future<void> _initEpisode() async {
+    if (_isLoadingPlay) return;
+    _hasRequestedPlay = true;
+    _isLoadingPlay = true;
     _isInitialized = false;
     _hasError = false;
     _didTriggerEnd = false;
+    _paywall = null;
+    _blockReason = '';
     _activeSubtitle = null;
-
-    final wallet = ref.read(userWalletProvider);
-    if (!wallet.isEpisodeUnlocked(widget.drama, widget.episodeNo)) {
-      if (mounted) setState(() {});
-      return;
-    }
-
-    final ctrl = createDramaVideoController(
-      drama: widget.drama,
-      episodeNo: widget.episodeNo,
-      customStreamBaseUrl: wallet.customStreamBaseUrl,
-    );
-    _controller = ctrl;
+    if (mounted) setState(() {});
 
     try {
-      await ctrl.initialize();
-      if (!mounted || _controller != ctrl) return;
-      ctrl.addListener(_onVideoTick);
-      ctrl.setPlaybackSpeed(ref.read(userWalletProvider).playbackSpeed);
-      _isInitialized = true;
-      _updatePlaybackState();
-      setState(() {});
+      final preview = widget.previewInfo;
+      if (preview != null) {
+        await _startVideoStream(
+          videoUrl: preview.videoUrl,
+          subtitles: preview.subtitles,
+        );
+        return;
+      }
+
+      final locale = ref.read(localeProvider);
+      final dramaApi = ref.read(dramaApiServiceProvider);
+      final playResp = await dramaApi.playEpisode(
+        widget.drama.dramaId,
+        widget.episodeNo,
+        lang: locale.appLanguage,
+      );
+      if (!mounted) return;
+      await _startVideoStream(
+        videoUrl: playResp.videoUrl,
+        subtitles: playResp.subtitles,
+      );
+    } on DramaPaywallException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPlay = false;
+        _paywall = PaywallResponse.fromJson(e.paywallData);
+        _blockReason =
+            e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED';
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _isLoadingPlay = false;
         _hasError = true;
         _errorMessage = e.toString();
       });
     }
   }
 
+  Future<void> _startVideoStream({
+    required String videoUrl,
+    required List<SubtitleTrack> subtitles,
+  }) async {
+    _subTracks = subtitles;
+    unawaited(_loadSubtitlesForLanguage(ref.read(localeProvider).subtitleLanguage));
+
+    final factory = ref.read(videoControllerFactoryProvider);
+    final ctrl = factory.createFromUrl(videoUrl);
+    _controller = ctrl;
+
+    await ctrl.initialize();
+    if (!mounted || _controller != ctrl) {
+      await ctrl.dispose();
+      return;
+    }
+
+    if (widget.initialPositionSec > 0 && !_didApplyInitialSeek) {
+      final durSec = ctrl.value.duration.inSeconds;
+      if (durSec <= 0 || widget.initialPositionSec < durSec - 2) {
+        await ctrl.seekTo(Duration(seconds: widget.initialPositionSec));
+      }
+      _didApplyInitialSeek = true;
+    }
+
+    await ctrl.setPlaybackSpeed(ref.read(userWalletProvider).playbackSpeed);
+    ctrl.addListener(_onVideoTick);
+
+    setState(() {
+      _isLoadingPlay = false;
+      _isInitialized = true;
+    });
+    _updatePlaybackState();
+  }
+
+  Future<void> _loadSubtitlesForLanguage(String langCode) async {
+    final locale = ref.read(localeProvider);
+    if (!locale.subtitlesEnabled || _subTracks.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _cues = const [];
+          _activeSubtitle = null;
+        });
+      }
+      return;
+    }
+
+    SubtitleTrack? match;
+    for (final t in _subTracks) {
+      if (t.language.toLowerCase() == langCode.toLowerCase()) {
+        match = t;
+        break;
+      }
+    }
+    match ??= _subTracks.firstWhere(
+      (t) => t.isDefault,
+      orElse: () => _subTracks.first,
+    );
+
+    if (match.url.isEmpty) return;
+    final cues = await SrtParser.loadSubtitleUrl(match.url);
+    if (!mounted) return;
+    setState(() {
+      _cues = cues;
+      if (_controller != null && _controller!.value.isInitialized) {
+        _activeSubtitle = SrtParser.findActiveText(
+          _cues,
+          _controller!.value.position,
+        );
+      }
+    });
+  }
+
   void _updatePlaybackState() {
     final ctrl = _controller;
-    if (ctrl == null || !_isInitialized) return;
+    if (ctrl == null || !_isInitialized) {
+      widget.onPlaybackUpdate?.call(0, 0, false);
+      return;
+    }
     if (widget.isActive && !_isPausedByUser) {
       ctrl.play();
-      final slug = widget.drama.slug;
-      final epNo = widget.episodeNo;
-      Future.microtask(() {
-        if (mounted) {
-          ref.read(watchlistProvider.notifier).recordWatchHistory(slug, epNo);
-        }
-      });
+      final posSec = ctrl.value.position.inSeconds;
+      final durSec = ctrl.value.duration.inSeconds;
+      widget.onPlaybackUpdate?.call(posSec, durSec, true);
     } else {
       ctrl.pause();
+      final posSec = ctrl.value.position.inSeconds;
+      final durSec = ctrl.value.duration.inSeconds;
+      widget.onPlaybackUpdate?.call(posSec, durSec, false);
     }
   }
 
@@ -137,18 +291,26 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
 
     final pos = ctrl.value.position;
     final dur = ctrl.value.duration;
+    final posSec = pos.inSeconds;
+
+    if (posSec != _lastTickEmitSec) {
+      _lastTickEmitSec = posSec;
+      widget.onPlaybackUpdate?.call(
+        posSec,
+        dur.inSeconds,
+        ctrl.value.isPlaying,
+      );
+    }
 
     final sub = SrtParser.findActiveText(_cues, pos);
     if (sub != _activeSubtitle) {
       setState(() {
         _activeSubtitle = sub;
       });
-    } else {
-      setState(() {});
     }
 
     if (dur.inMilliseconds > 500 &&
-        pos.inMilliseconds >= dur.inMilliseconds - 200 &&
+        pos.inMilliseconds >= dur.inMilliseconds - 250 &&
         !_didTriggerEnd) {
       _didTriggerEnd = true;
       final autoPlay = ref.read(userWalletProvider).autoPlayNext;
@@ -169,9 +331,19 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       if (ctrl.value.isPlaying) {
         ctrl.pause();
         _isPausedByUser = true;
+        widget.onPlaybackUpdate?.call(
+          ctrl.value.position.inSeconds,
+          ctrl.value.duration.inSeconds,
+          false,
+        );
       } else {
         ctrl.play();
         _isPausedByUser = false;
+        widget.onPlaybackUpdate?.call(
+          ctrl.value.position.inSeconds,
+          ctrl.value.duration.inSeconds,
+          true,
+        );
       }
     });
   }
@@ -179,16 +351,12 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   Future<void> _handleOpenEpisodeList() async {
     final cb = widget.onOpenEpisodeList;
     if (cb == null) return;
-    setState(() {
-      _isEpisodeSheetOpen = true;
-    });
+    setState(() => _isEpisodeSheetOpen = true);
     try {
       await cb();
     } finally {
       if (mounted) {
-        setState(() {
-          _isEpisodeSheetOpen = false;
-        });
+        setState(() => _isEpisodeSheetOpen = false);
       }
     }
   }
@@ -207,22 +375,156 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   }
 
   Future<void> _unlockWithRewardAd() async {
-    if (_isWatchingAd) return;
-    setState(() => _isWatchingAd = true);
+    if (_isUnlocking) return;
+    setState(() => _isUnlocking = true);
     final earned = await showRewardUnlock(context, ref);
     if (!mounted) return;
-    setState(() => _isWatchingAd = false);
-    if (earned) {
-      ref
-          .read(userWalletProvider.notifier)
-          .unlockEpisodeByAd(widget.drama, widget.episodeNo);
-      _initEpisode();
+    if (!earned) {
+      setState(() => _isUnlocking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ref.read(localeProvider).tr('reward_ad_failed'))),
+      );
       return;
     }
-    final locale = ref.read(localeProvider);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(locale.tr('reward_ad_failed'))),
+
+    await _performApiUnlock(
+      method: 'ad',
+      unlockFullDrama: false,
+      adNetwork: 'admob',
+      adUnitId: MyAdIdName.rewardedUnlock.getId,
     );
+  }
+
+  Future<void> _unlockWithCoins({required bool fullDrama}) async {
+    if (_isUnlocking) return;
+    setState(() => _isUnlocking = true);
+    await _performApiUnlock(
+      method: 'coins',
+      unlockFullDrama: fullDrama,
+    );
+  }
+
+  Future<void> _performApiUnlock({
+    required String method,
+    required bool unlockFullDrama,
+    String? adNetwork,
+    String? adUnitId,
+  }) async {
+    try {
+      final resp = await ref.read(dramaApiServiceProvider).unlockEpisode(
+            widget.drama.dramaId,
+            widget.episodeNo,
+            method,
+            unlockFullDrama: unlockFullDrama,
+            adNetwork: adNetwork,
+            adUnitId: adUnitId,
+          );
+      if (!mounted) return;
+
+      ref.read(walletProvider.notifier).updateFromUnlock(resp);
+      ref.read(eventTrackerProvider).track(
+        'episode_unlock',
+        dramaId: widget.drama.dramaId,
+        episodeNumber: widget.episodeNo,
+        sourceScreen: widget.sourceScreen,
+        props: {
+          'method': method,
+          'full_drama': unlockFullDrama,
+        },
+      );
+      widget.onEpisodeUnlocked?.call(widget.episodeNo, unlockFullDrama);
+
+      setState(() {
+        _paywall = null;
+        _blockReason = '';
+        _isUnlocking = false;
+      });
+      await _startVideoStream(
+        videoUrl: resp.videoUrl,
+        subtitles: resp.subtitles,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isUnlocking = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Unlock failed: $e')),
+      );
+    }
+  }
+
+  void _openRewardsOrVip() {
+    ref.read(shellTabIndexProvider.notifier).setTab(3);
+    if (!widget.showFullDramaButton && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _handleLike() async {
+    final currentLiked = _isLikedOverride ??
+        (ref.read(mylistProvider).likedIds.contains(widget.drama.dramaId) ||
+            widget.drama.isLiked);
+    final currentCount = _likeCountOverride ?? widget.drama.likeCount;
+
+    final result = await ref.read(mylistProvider.notifier).toggleLike(
+          widget.drama.dramaId,
+          currentIsLiked: currentLiked,
+          currentLikeCount: currentCount,
+          episodeNumber: widget.showFullDramaButton ? 0 : widget.episodeNo,
+        );
+    if (!mounted) return;
+    setState(() {
+      _isLikedOverride = result.isLiked;
+      _likeCountOverride = result.likeCount;
+    });
+    if (widget.showFullDramaButton && result.isLiked) {
+      ref.read(feedProvider.notifier).trackEvent(widget.drama.dramaId, 'like');
+    }
+  }
+
+  Future<void> _handleShare() async {
+    final shareUrl =
+        'https://dramota.com/drama/${widget.drama.dramaId}?ep=${widget.episodeNo}';
+    await Clipboard.setData(
+      ClipboardData(text: '${widget.drama.title} - $shareUrl'),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${widget.drama.title} link copied'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    try {
+      final res = await ref.read(dramaApiServiceProvider).shareDrama(
+            widget.drama.dramaId,
+            channel: 'copy_link',
+            episodeNumber: widget.episodeNo,
+          );
+      if (mounted) {
+        setState(() => _shareCountOverride = res.shareCount);
+      }
+      ref.read(eventTrackerProvider).track(
+        'drama_share',
+        dramaId: widget.drama.dramaId,
+        episodeNumber: widget.episodeNo,
+        sourceScreen: widget.sourceScreen,
+      );
+      if (widget.showFullDramaButton) {
+        ref
+            .read(feedProvider.notifier)
+            .trackEvent(widget.drama.dramaId, 'share');
+      }
+    } catch (_) {
+      // Non-fatal analytics/share call
+    }
+  }
+
+  String _formatCount(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return n > 0 ? '$n' : '';
   }
 
   void _disposeController() {
@@ -272,40 +574,51 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
       },
     );
 
+    ref.listen<LocaleState>(localeProvider, (prev, next) {
+      if (prev?.subtitleLanguage != next.subtitleLanguage ||
+          prev?.subtitlesEnabled != next.subtitlesEnabled) {
+        _loadSubtitlesForLanguage(next.subtitleLanguage);
+      }
+    });
+
     final locale = ref.watch(localeProvider);
     final playbackSpeed =
         ref.watch(userWalletProvider.select((s) => s.playbackSpeed));
-    final isUnlocked = ref.watch(
-      userWalletProvider.select(
-        (s) => s.isEpisodeUnlocked(widget.drama, widget.episodeNo),
-      ),
-    );
-    final isFav = ref.watch(
-      watchlistProvider.select((s) => s.isFavorite(widget.drama.slug)),
-    );
 
-    final cuesAsync = ref.watch(
-      episodeSubtitlesProvider(
-        (slug: widget.drama.slug, episodeNo: widget.episodeNo),
+    final isFav = ref.watch(
+      mylistProvider.select(
+        (s) => s.favoriteIds.contains(widget.drama.dramaId),
       ),
-    );
-    _cues = cuesAsync.asData?.value ?? [];
-    if (_controller != null && _controller!.value.isInitialized) {
-      _activeSubtitle =
-          SrtParser.findActiveText(_cues, _controller!.value.position);
-    }
+    ) ||
+        widget.drama.isFavorited;
+    final isLiked = _isLikedOverride ??
+        (ref.watch(
+              mylistProvider.select(
+                (s) => s.likedIds.contains(widget.drama.dramaId),
+              ),
+            ) ||
+            widget.drama.isLiked);
+    final likeCount = _likeCountOverride ?? widget.drama.likeCount;
+    final shareCount = _shareCountOverride ?? widget.drama.shareCount;
 
     final langOpt = AppStrings.getLanguageOption(locale.subtitleLanguage);
     final bottomPad =
         widget.showFullDramaButton ? 0.0 : MediaQuery.paddingOf(context).bottom;
+    final totalEps = widget.drama.totalEpisodes > 0
+        ? widget.drama.totalEpisodes
+        : widget.episodeNo;
+    final isLocked = _paywall != null;
+    final subLangCodes = _subTracks.isNotEmpty
+        ? _subTracks.map((t) => t.language).toList()
+        : widget.drama.availableSubLangs;
 
     return Container(
       color: AppColors.black,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. Full-bleed Video layer or Poster background
-          if (!isUnlocked)
+          // 1. Video / Paywall / Error / Loading layer
+          if (isLocked)
             _buildLockedOverlay(locale)
           else if (_hasError)
             _buildErrorView(locale)
@@ -315,7 +628,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
             _buildLoadingView(),
 
           // 2. Center Play Icon when paused
-          if (isUnlocked && _isInitialized && _isPausedByUser)
+          if (!isLocked && _isInitialized && _isPausedByUser)
             IgnorePointer(
               child: Center(
                 child: Container(
@@ -333,7 +646,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
               ),
             ),
 
-          // 3. Bottom Scrim Gradient for Crisp Readability
+          // 3. Bottom Scrim Gradient
           Positioned(
             left: 0,
             right: 0,
@@ -348,8 +661,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
             ),
           ),
 
-          // 4. Synchronized .srt Subtitle Overlay
-          if (isUnlocked &&
+          // 4. Synchronized VTT/SRT Subtitle Overlay
+          if (!isLocked &&
               locale.subtitlesEnabled &&
               _activeSubtitle != null &&
               _activeSubtitle!.isNotEmpty)
@@ -390,20 +703,47 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   label: isFav
                       ? locale.tr('saved')
                       : locale.tr('player_save_short'),
-                  onTap: () => ref
-                      .read(watchlistProvider.notifier)
-                      .toggleFavorite(widget.drama.slug),
+                  onTap: () {
+                    ref.read(mylistProvider.notifier).toggleFavorite(
+                          widget.drama,
+                          episodeNumber: widget.episodeNo,
+                        );
+                    if (widget.showFullDramaButton && !isFav) {
+                      ref
+                          .read(feedProvider.notifier)
+                          .trackEvent(widget.drama.dramaId, 'favorite');
+                    }
+                  },
                 ),
-                SizedBox(height: 15.h),
+                SizedBox(height: 11.h),
+                _ActionIconButton(
+                  icon: isLiked
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  iconColor:
+                      isLiked ? AppColors.primaryBright : AppColors.textPrimary,
+                  label: _formatCount(likeCount).isNotEmpty
+                      ? _formatCount(likeCount)
+                      : 'Like',
+                  onTap: _handleLike,
+                ),
+                SizedBox(height: 11.h),
+                _ActionIconButton(
+                  icon: Icons.share_rounded,
+                  label: _formatCount(shareCount).isNotEmpty
+                      ? _formatCount(shareCount)
+                      : 'Share',
+                  onTap: _handleShare,
+                ),
+                SizedBox(height: 11.h),
                 if (widget.onOpenEpisodeList != null) ...[
                   _ActionIconButton(
                     iconAsset:
                         _isEpisodeSheetOpen ? _icEpisodesSelected : _icEpisodes,
-                    label:
-                        '${widget.drama.totalEpisodes} ${locale.tr('player_eps_short')}',
+                    label: '$totalEps ${locale.tr('player_eps_short')}',
                     onTap: _handleOpenEpisodeList,
                   ),
-                  SizedBox(height: 15.h),
+                  SizedBox(height: 11.h),
                 ],
                 _ActionIconButton(
                   iconAsset:
@@ -411,16 +751,22 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   label: locale.subtitlesEnabled
                       ? '${langOpt.flag} ${langOpt.code.toUpperCase()}'
                       : locale.tr('sub_off'),
-                  onTap: () => PlayerSettingsSheet.show(context),
+                  onTap: () => PlayerSettingsSheet.show(
+                    context,
+                    availableSubLangs: subLangCodes,
+                  ),
                   onLongPress: () =>
                       ref.read(localeProvider.notifier).toggleSubtitlesEnabled(),
                 ),
-                SizedBox(height: 15.h),
+                SizedBox(height: 11.h),
                 _ActionIconButton(
                   icon: Icons.speed_rounded,
                   label: _formatSpeed(playbackSpeed),
                   onTap: () => _cyclePlaybackSpeed(playbackSpeed),
-                  onLongPress: () => PlayerSettingsSheet.show(context),
+                  onLongPress: () => PlayerSettingsSheet.show(
+                    context,
+                    availableSubLangs: subLangCodes,
+                  ),
                 ),
               ],
             ),
@@ -445,24 +791,26 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                     borderRadius: BorderRadius.circular(6.r),
                   ),
                   child: Text(
-                    '${locale.tr('player_ep_badge')} ${widget.episodeNo} / ${widget.drama.totalEpisodes}',
+                    '${locale.tr('player_ep_badge')} ${widget.episodeNo} / $totalEps',
                     style: AppTextStyles.playerEpBadge,
                   ),
                 ),
                 SizedBox(height: 8.h),
                 Text(
-                  locale.dramaTitle(widget.drama),
+                  widget.drama.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.playerDramaTitle,
                 ),
-                SizedBox(height: 5.h),
-                Text(
-                  locale.dramaDescription(widget.drama),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.playerDramaDesc,
-                ),
+                if (widget.drama.description.isNotEmpty) ...[
+                  SizedBox(height: 5.h),
+                  Text(
+                    widget.drama.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.playerDramaDesc,
+                  ),
+                ],
                 if (widget.showFullDramaButton &&
                     widget.onOpenFullDrama != null) ...[
                   SizedBox(height: 12.h),
@@ -501,7 +849,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                               SizedBox(width: 8.w),
                               Flexible(
                                 child: Text(
-                                  '${locale.tr('watch_full_drama')} (${widget.drama.totalEpisodes} ${locale.tr('player_episodes_full')})',
+                                  '${locale.tr('watch_full_drama')} ($totalEps ${locale.tr('player_episodes_full')})',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyles.playerWatchFullBtn,
@@ -518,8 +866,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
             ),
           ),
 
-          // 7. Minimal Edge-to-Edge Bottom Progress Bar
-          if (isUnlocked && _isInitialized && _controller != null)
+          // 7. Edge-to-Edge Bottom Progress Bar
+          if (!isLocked && _isInitialized && _controller != null)
             Positioned(
               left: 0,
               right: 0,
@@ -553,10 +901,9 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset(
-          widget.drama.posterAssetPath,
+        DramaNetworkImage(
+          url: widget.drama.coverUrl,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.black),
         ),
         const ColoredBox(color: AppColors.overlayMedium),
         const Center(
@@ -581,6 +928,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
               _errorMessage,
               textAlign: TextAlign.center,
               style: AppTextStyles.caption,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
             ),
             SizedBox(height: 16.h),
             ElevatedButton.icon(
@@ -595,19 +944,19 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
   }
 
   Widget _buildLockedOverlay(LocaleState locale) {
+    final opts = _paywall?.unlockOptions ?? UnlockOptions();
+    final hasAdQuota =
+        opts.allowAdUnlock && opts.adUnlocksRemainingToday > 0;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.asset(
-          widget.drama.posterAssetPath,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => const ColoredBox(color: AppColors.black),
-        ),
+        DramaNetworkImage(url: widget.drama.coverUrl, fit: BoxFit.cover),
         const ColoredBox(color: AppColors.overlayHeavy),
         Center(
           child: Container(
-            margin: EdgeInsets.symmetric(horizontal: 28.w),
-            padding: EdgeInsets.all(24.w),
+            margin: EdgeInsets.symmetric(horizontal: 26.w),
+            padding: EdgeInsets.all(22.w),
             decoration: BoxDecoration(
               color: AppColors.surfaceLockedCard,
               borderRadius: BorderRadius.circular(18.r),
@@ -625,38 +974,112 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   child: Icon(
                     Icons.lock_rounded,
                     color: AppColors.primaryBright,
-                    size: 34.sp,
+                    size: 32.sp,
                   ),
                 ),
-                SizedBox(height: 14.h),
+                SizedBox(height: 12.h),
                 Text(
                   '${locale.tr('unlock_ep_title')} ${widget.episodeNo}',
                   style: AppTextStyles.h2,
                 ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 6.h),
                 Text(
-                  locale.tr('locked_title'),
+                  _blockReason == 'DAILY_LIMIT_REACHED'
+                      ? 'Daily free ad limit reached (${opts.adUnlocksRemainingToday}/${opts.adUnlockDailyLimit})'
+                      : '${locale.tr('current_balance')}: ${opts.userTotalCoins} ${locale.tr('coins')}',
+                  textAlign: TextAlign.center,
                   style: AppTextStyles.caption,
                 ),
-                SizedBox(height: 20.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _isWatchingAd ? null : _unlockWithRewardAd,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primaryBright,
-                      foregroundColor: AppColors.textPrimary,
-                      padding: EdgeInsets.symmetric(vertical: 13.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.r),
+                SizedBox(height: 16.h),
+                if (hasAdQuota) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isUnlocking ? null : _unlockWithRewardAd,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryBright,
+                        foregroundColor: AppColors.textPrimary,
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                      icon: Icon(Icons.ondemand_video_rounded, size: 19.sp),
+                      label: Text(
+                        _isUnlocking
+                            ? locale.tr('watching_ad')
+                            : '${locale.tr('watch_ad_free')} (${opts.adUnlocksRemainingToday}/${opts.adUnlockDailyLimit})',
+                        style: AppTextStyles.buttonMedium,
                       ),
                     ),
-                    icon: Icon(Icons.ondemand_video_rounded, size: 20.sp),
-                    label: Text(
-                      _isWatchingAd
-                          ? locale.tr('watching_ad')
-                          : locale.tr('watch_ad_free'),
-                      style: AppTextStyles.buttonMedium,
+                  ),
+                  SizedBox(height: 10.h),
+                ],
+                if (opts.coinCost > 0) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isUnlocking
+                          ? null
+                          : () {
+                              if (opts.canAffordSingle) {
+                                _unlockWithCoins(fullDrama: false);
+                              } else {
+                                _openRewardsOrVip();
+                              }
+                            },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.gold,
+                        side: const BorderSide(color: AppColors.gold),
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                      icon: Icon(Icons.monetization_on_rounded, size: 18.sp),
+                      label: Text(
+                        opts.canAffordSingle
+                            ? '${locale.tr('unlock_ep_title')} (${opts.coinCost} ${locale.tr('coins')})'
+                            : '${locale.tr('top_up_btn')} / ${locale.tr('tab_vip')} (${opts.coinCost} ${locale.tr('coins')})',
+                        style: AppTextStyles.buttonMedium,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                ],
+                if (opts.fullDramaCoinCost > 0 &&
+                    opts.fullDramaRemainingEpisodes > 1)
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed: _isUnlocking
+                          ? null
+                          : () {
+                              if (opts.canAffordFullDrama) {
+                                _unlockWithCoins(fullDrama: true);
+                              } else {
+                                _openRewardsOrVip();
+                              }
+                            },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.textWhite80,
+                        padding: EdgeInsets.symmetric(vertical: 8.h),
+                      ),
+                      child: Text(
+                        '${locale.tr('full_series')} (${opts.fullDramaRemainingEpisodes} ${locale.tr('episodes_suffix')} • ${opts.fullDramaCoinCost} ${locale.tr('coins')}${opts.fullDramaDiscountPct > 0 ? ' -${opts.fullDramaDiscountPct}%' : ''})',
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.caption,
+                      ),
+                    ),
+                  ),
+                SizedBox(height: 4.h),
+                TextButton(
+                  onPressed: _openRewardsOrVip,
+                  child: Text(
+                    locale.tr('upgrade_vip_title'),
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.primaryBright,
+                      decoration: TextDecoration.underline,
                     ),
                   ),
                 ),
@@ -672,6 +1095,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
 class _ActionIconButton extends StatelessWidget {
   final String? iconAsset;
   final IconData? icon;
+  final Color iconColor;
   final String label;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -679,6 +1103,7 @@ class _ActionIconButton extends StatelessWidget {
   const _ActionIconButton({
     this.iconAsset,
     this.icon,
+    this.iconColor = AppColors.textPrimary,
     required this.label,
     required this.onTap,
     this.onLongPress,
@@ -701,14 +1126,14 @@ class _ActionIconButton extends StatelessWidget {
                 child: iconAsset != null
                     ? Image.asset(
                         iconAsset!,
-                        width: 42.w,
-                        height: 42.w,
+                        width: 40.w,
+                        height: 40.w,
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
                       )
                     : Container(
-                        width: 42.w,
-                        height: 42.w,
+                        width: 40.w,
+                        height: 40.w,
                         alignment: Alignment.center,
                         decoration: const BoxDecoration(
                           color: AppColors.playerGlassCircle,
@@ -716,13 +1141,13 @@ class _ActionIconButton extends StatelessWidget {
                         ),
                         child: Icon(
                           icon,
-                          color: AppColors.textPrimary,
-                          size: 21.sp,
+                          color: iconColor,
+                          size: 20.sp,
                         ),
                       ),
               ),
             ),
-            SizedBox(height: 5.h),
+            SizedBox(height: 4.h),
             Text(
               label,
               maxLines: 1,

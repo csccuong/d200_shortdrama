@@ -8,6 +8,7 @@ import 'core/constants/app_constants.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_route_observer.dart';
 import 'core/utils/screen_utils.dart';
+import 'firebase_options.dart';
 import 'fo/splash/splash_activity.dart';
 import 'services/firebase_remote_config_service.dart';
 
@@ -16,7 +17,9 @@ const String env = Environment.dev;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     await FirebaseRemoteConfigService.initFirebaseRemoteConfig();
   } catch (e) {
     debugPrint('Firebase initialization skipped/error: $e');
@@ -52,7 +55,7 @@ class BobDramaApp extends StatelessWidget {
               key: const ValueKey('riverpod_material_app_5tabs'),
               navigatorKey: navService.navigatorKey,
               navigatorObservers: [AppRouteObserver()],
-              title: 'DXX ShortDrama',
+              title: 'Dramota: Short & Dramas Reel',
               debugShowCheckedModeBanner: false,
               theme: AppTheme.darkTheme,
               home: child,
