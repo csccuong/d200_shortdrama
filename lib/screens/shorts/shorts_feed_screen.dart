@@ -93,8 +93,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   }
 
   void _ensureFeedLoaded() {
-    final sessionReady =
-        ref.read(sessionProvider).asData?.value.isInitialized ?? false;
+    final sessionReady = ref.read(sessionProvider).isReady;
     final feed = ref.read(feedProvider);
     if (sessionReady && feed.items.isEmpty && !feed.isLoadingMore) {
       unawaited(
@@ -103,6 +102,14 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
             .fetchInitialFeed(ref.read(localeProvider).appLanguage),
       );
     }
+  }
+
+  Future<void> _retryForYou() async {
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready || !mounted) return;
+    await ref
+        .read(feedProvider.notifier)
+        .refresh(ref.read(localeProvider).appLanguage);
   }
 
   void _onAllDramasScroll() {
@@ -122,6 +129,16 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
       _isLoadingAll = true;
       if (reset) _allError = null;
     });
+
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingAll = false;
+        _allError = ref.read(sessionProvider).failureText;
+      });
+      return;
+    }
 
     try {
       final res = await ref.read(homeApiServiceProvider).browseDramas(
@@ -538,9 +555,17 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
     final autoPlayNext =
         ref.watch(userWalletProvider.select((s) => s.autoPlayNext));
 
+    ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
+      if (!(prev?.isReady ?? false) && next.isReady) {
+        _ensureFeedLoaded();
+        if (_topTab == 1 && _allDramas.isEmpty && !_isLoadingAll) {
+          unawaited(_loadAllDramas(reset: true));
+        }
+      }
+    });
+
     ref.listen<LocaleState>(localeProvider, (prev, next) {
-      if (prev?.appLanguage != next.appLanguage &&
-          (sessionAsync.asData?.value.isInitialized ?? false)) {
+      if (prev?.appLanguage != next.appLanguage && sessionAsync.isReady) {
         unawaited(ref.read(feedProvider.notifier).fetchInitialFeed(next.appLanguage));
         if (_topTab == 1) {
           unawaited(_loadAllDramas(reset: true));
@@ -557,6 +582,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
           _buildForYouFeed(
             feedItems: feedItems,
             feedState: feedState,
+            sessionAsync: sessionAsync,
             locale: locale,
             autoPlayNext: autoPlayNext,
           )
@@ -644,10 +670,12 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   Widget _buildForYouFeed({
     required List<ForYouItem> feedItems,
     required FeedState feedState,
+    required AsyncValue<SessionState> sessionAsync,
     required LocaleState locale,
     required bool autoPlayNext,
   }) {
-    if (feedItems.isEmpty && feedState.isLoadingMore) {
+    if (feedItems.isEmpty &&
+        (feedState.isLoadingMore || sessionAsync.isLoading)) {
       return const Center(
         child: CircularProgressIndicator.adaptive(
           valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
@@ -669,17 +697,17 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
               ),
               SizedBox(height: 12.h),
               Text(
-                locale.tr('empty_following'),
+                feedState.error ??
+                    sessionAsync.failureText ??
+                    locale.tr('empty_following'),
                 style: AppTextStyles.caption,
                 textAlign: TextAlign.center,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
               ),
               SizedBox(height: 14.h),
               ElevatedButton.icon(
-                onPressed: () => unawaited(
-                  ref
-                      .read(feedProvider.notifier)
-                      .fetchInitialFeed(locale.appLanguage),
-                ),
+                onPressed: () => unawaited(_retryForYou()),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.textPrimary,
@@ -696,8 +724,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
     return RefreshIndicator(
       color: AppColors.primary,
       backgroundColor: AppColors.surfaceCard,
-      onRefresh: () =>
-          ref.read(feedProvider.notifier).refresh(locale.appLanguage),
+      onRefresh: _retryForYou,
       child: PageView.builder(
         controller: _pageController,
         scrollDirection: Axis.vertical,

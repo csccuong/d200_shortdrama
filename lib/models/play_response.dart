@@ -69,22 +69,29 @@ class PlayResponse {
   });
 
   factory PlayResponse.fromJson(Map<String, dynamic> json) {
+    final rawNext = json['next_episode'];
+    NextEpisodeInfo? nextEp;
+    if (rawNext is Map) {
+      nextEp = NextEpisodeInfo.fromJson(Map<String, dynamic>.from(rawNext));
+    } else if (rawNext is num) {
+      nextEp = NextEpisodeInfo(episodeNumber: rawNext.toInt());
+    }
+
     return PlayResponse(
       dramaId: json['drama_id']?.toString() ?? '',
-      episodeNumber: json['episode_number'] as int? ?? 0,
-      durationSec: json['duration_sec'] as int? ?? 0,
-      accessReason: json['access_reason'] as String? ?? '',
-      videoUrl: json['video_url'] as String? ?? '',
-      streamExpiresIn: json['stream_expires_in'] as int? ?? 900,
+      episodeNumber: (json['episode_number'] as num?)?.toInt() ?? 0,
+      durationSec: (json['duration_sec'] as num?)?.toInt() ?? 0,
+      accessReason: json['access_reason']?.toString() ?? '',
+      videoUrl: json['video_url']?.toString() ?? '',
+      streamExpiresIn: (json['stream_expires_in'] as num?)?.toInt() ?? 900,
       subtitles: (json['subtitles'] as List<dynamic>?)
-              ?.map(
-                  (e) => SubtitleTrack.fromJson(e as Map<String, dynamic>))
+              ?.whereType<Map<dynamic, dynamic>>()
+              .map(
+                (e) => SubtitleTrack.fromJson(Map<String, dynamic>.from(e)),
+              )
               .toList() ??
           const [],
-      nextEpisode: json['next_episode'] != null
-          ? NextEpisodeInfo.fromJson(
-              json['next_episode'] as Map<String, dynamic>)
-          : null,
+      nextEpisode: nextEp,
     );
   }
 }
@@ -186,15 +193,17 @@ class UnlockResponse {
 
   factory UnlockResponse.fromJson(Map<String, dynamic> json) {
     return UnlockResponse(
-      coinBalance: json['coin_balance'] as int? ?? 0,
-      bonusCoinBalance: json['bonus_coin_balance'] as int? ?? 0,
-      totalCoins: json['total_coins'] as int? ?? 0,
+      coinBalance: (json['coin_balance'] as num?)?.toInt() ?? 0,
+      bonusCoinBalance: (json['bonus_coin_balance'] as num?)?.toInt() ?? 0,
+      totalCoins: (json['total_coins'] as num?)?.toInt() ?? 0,
       adUnlocksRemainingToday:
-          json['ad_unlocks_remaining_today'] as int? ?? 0,
-      videoUrl: json['video_url'] as String? ?? '',
+          (json['ad_unlocks_remaining_today'] as num?)?.toInt() ?? 0,
+      videoUrl: json['video_url']?.toString() ?? '',
       subtitles: (json['subtitles'] as List<dynamic>?)
-              ?.map(
-                  (e) => SubtitleTrack.fromJson(e as Map<String, dynamic>))
+              ?.whereType<Map<dynamic, dynamic>>()
+              .map(
+                (e) => SubtitleTrack.fromJson(Map<String, dynamic>.from(e)),
+              )
               .toList() ??
           const [],
     );

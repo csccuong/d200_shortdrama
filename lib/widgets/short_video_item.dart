@@ -183,7 +183,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
         _blockReason =
             e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED';
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint(
+        'ShortVideoItem._initEpisode error (${widget.drama.dramaId} ep ${widget.episodeNo}): $e\n$st',
+      );
       if (!mounted) return;
       setState(() {
         _isLoadingPlay = false;
@@ -452,12 +455,13 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
     }
   }
 
-  void _openRewardsOrVip() {
-    ref.read(shellTabIndexProvider.notifier).setTab(3);
-    if (!widget.showFullDramaButton && Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
-    }
-  }
+  // TODO(IAP): Re-enable when Rewards/IAP tab is integrated.
+  // void _openRewardsOrVip() {
+  //   ref.read(shellTabIndexProvider.notifier).setTab(3);
+  //   if (!widget.showFullDramaButton && Navigator.of(context).canPop()) {
+  //     Navigator.of(context).pop();
+  //   }
+  // }
 
   Future<void> _handleLike() async {
     final currentCount = _likeCountOverride ?? widget.drama.likeCount;
@@ -1011,19 +1015,14 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   ),
                   SizedBox(height: 10.h),
                 ],
-                if (opts.coinCost > 0) ...[
+                // TODO(IAP): Re-enable Top Up / VIP fallback when Rewards & IAP are active.
+                if (opts.coinCost > 0 && opts.canAffordSingle) ...[
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: _isUnlocking
                           ? null
-                          : () {
-                              if (opts.canAffordSingle) {
-                                _unlockWithCoins(fullDrama: false);
-                              } else {
-                                _openRewardsOrVip();
-                              }
-                            },
+                          : () => _unlockWithCoins(fullDrama: false),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.gold,
                         side: const BorderSide(color: AppColors.gold),
@@ -1034,9 +1033,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                       ),
                       icon: Icon(Icons.monetization_on_rounded, size: 18.sp),
                       label: Text(
-                        opts.canAffordSingle
-                            ? '${locale.tr('unlock_ep_title')} (${opts.coinCost} ${locale.tr('coins')})'
-                            : '${locale.tr('top_up_btn')} / ${locale.tr('tab_vip')} (${opts.coinCost} ${locale.tr('coins')})',
+                        '${locale.tr('unlock_ep_title')} (${opts.coinCost} ${locale.tr('coins')})',
+                        // : '${locale.tr('top_up_btn')} / ${locale.tr('tab_vip')} (${opts.coinCost} ${locale.tr('coins')})',
                         style: AppTextStyles.buttonMedium,
                       ),
                     ),
@@ -1044,19 +1042,14 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                   SizedBox(height: 10.h),
                 ],
                 if (opts.fullDramaCoinCost > 0 &&
-                    opts.fullDramaRemainingEpisodes > 1)
+                    opts.fullDramaRemainingEpisodes > 1 &&
+                    opts.canAffordFullDrama)
                   SizedBox(
                     width: double.infinity,
                     child: TextButton(
                       onPressed: _isUnlocking
                           ? null
-                          : () {
-                              if (opts.canAffordFullDrama) {
-                                _unlockWithCoins(fullDrama: true);
-                              } else {
-                                _openRewardsOrVip();
-                              }
-                            },
+                          : () => _unlockWithCoins(fullDrama: true),
                       style: TextButton.styleFrom(
                         foregroundColor: AppColors.textWhite70,
                         padding: EdgeInsets.symmetric(vertical: 8.h),
@@ -1068,17 +1061,18 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem> {
                       ),
                     ),
                   ),
-                SizedBox(height: 4.h),
-                TextButton(
-                  onPressed: _openRewardsOrVip,
-                  child: Text(
-                    locale.tr('upgrade_vip_title'),
-                    style: AppTextStyles.caption.copyWith(
-                      color: AppColors.primaryBright,
-                      decoration: TextDecoration.underline,
-                    ),
-                  ),
-                ),
+                // TODO(IAP): Re-enable "Upgrade to VIP" CTA when IAP is integrated.
+                // SizedBox(height: 4.h),
+                // TextButton(
+                //   onPressed: _openRewardsOrVip,
+                //   child: Text(
+                //     locale.tr('upgrade_vip_title'),
+                //     style: AppTextStyles.caption.copyWith(
+                //       color: AppColors.primaryBright,
+                //       decoration: TextDecoration.underline,
+                //     ),
+                //   ),
+                // ),
               ],
             ),
           ),

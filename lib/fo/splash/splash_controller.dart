@@ -122,8 +122,11 @@ class SplashController extends ChangeNotifier {
         }
 
         // ── Step 3 (doc 02 §2): Parallel pre-fetch for instant screen display ──
-        final lang = AppConstants.selectedLanguageCode;
-        _prefetchParallel(ref, lang);
+        if (context.mounted && !_isDisposed) {
+          final container = ProviderScope.containerOf(context, listen: false);
+          final lang = AppConstants.selectedLanguageCode;
+          _prefetchParallel(container, lang);
+        }
       } else {
         _apiInitialized = false;
       }
@@ -147,11 +150,11 @@ class SplashController extends ChangeNotifier {
   }
 
   /// Doc 02 §2 Step 3: Fire parallel calls that don't block navigation.
-  void _prefetchParallel(WidgetRef ref, String lang) {
+  void _prefetchParallel(ProviderContainer container, String lang) {
     unawaited(
       Future(() async {
         try {
-          await ref.read(homeProvider.notifier).fetchHome(lang);
+          await container.read(homeProvider.notifier).fetchHome(lang);
         } catch (e) {
           debugPrint('SplashController: Home pre-fetch failed (non-fatal): $e');
         }
@@ -161,7 +164,7 @@ class SplashController extends ChangeNotifier {
     unawaited(
       Future(() async {
         try {
-          await ref.read(feedProvider.notifier).fetchInitialFeed(lang);
+          await container.read(feedProvider.notifier).fetchInitialFeed(lang);
         } catch (e) {
           debugPrint('SplashController: Feed pre-fetch failed (non-fatal): $e');
         }
@@ -171,7 +174,7 @@ class SplashController extends ChangeNotifier {
     unawaited(
       Future(() async {
         try {
-          await ref.read(rewardsProvider.notifier).fetchOverview(lang);
+          await container.read(rewardsProvider.notifier).fetchOverview(lang);
         } catch (e) {
           debugPrint(
               'SplashController: Rewards pre-fetch failed (non-fatal): $e');

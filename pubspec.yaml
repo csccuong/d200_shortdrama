@@ -1,7 +1,7 @@
 name: dxx_shortdrama
 description: "DXX ShortDrama Streaming App (Flutter)"
 publish_to: 'none'
-version: 1.0.0+1
+version: 0.0.1+1
 
 environment:
   sdk: ^3.13.0
@@ -31,6 +31,7 @@ dependencies:
   country_flags: 4.1.2
   easy_ads_flutter:
     path: modules/easy-ads-master
+  url_launcher: ^6.3.3
 dev_dependencies:
   flutter_test:
     sdk: flutter

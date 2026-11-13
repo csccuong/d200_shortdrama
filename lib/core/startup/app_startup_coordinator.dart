@@ -13,12 +13,57 @@ import '../security/drama_remote_config_service.dart';
 class AppStartupCoordinator {
   static const _storage = FlutterSecureStorage();
   static const String _accessTokenKey = 'drama_access_token';
-  late final Dio dio;
-  late final DramaCryptoEngine crypto;
-  late final DramaBootstrapConfig bootstrap;
+
+  /// Override at build time with `--dart-define=APP_NATIVE_SECRET=...`.
+  static const String defaultAppNativeSecret = String.fromEnvironment(
+    'APP_NATIVE_SECRET',
+    defaultValue: 'G10_NativeGuard_Android_2026_x9A7pQ2m',
+  );
+
+  static bool get hasValidNativeSecret =>
+      defaultAppNativeSecret.isNotEmpty &&
+      !defaultAppNativeSecret.contains('<APP_NATIVE_SECRET');
+
+  final Dio dio = Dio(
+    BaseOptions(
+      baseUrl: 'https://api.dramota.com',
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 15),
+    ),
+  );
+  DramaCryptoEngine? _crypto;
+  DramaBootstrapConfig? _bootstrap;
   bool _initialized = false;
+  bool _interceptorAdded = false;
 
   bool get isInitialized => _initialized;
+
+  DramaCryptoEngine get crypto => _crypto ??= _createCryptoEngine(
+        Platform.isIOS ? 'shorttv_ios' : 'default_app',
+        '',
+      );
+
+  DramaBootstrapConfig get bootstrap =>
+      _bootstrap ??
+      const DramaBootstrapConfig(
+        appCode: 'default_app',
+        primaryApiUrl: 'https://api.dramota.com',
+        fallbackApiUrls: [],
+        mediaCdnUrl: 'https://api.dramota.com',
+        cryptoSalt: '',
+        sslPins: [],
+        reviewVersionCode: 0,
+        isMaintenance: false,
+        maintenanceMessage: '',
+      );
+
+  DramaCryptoEngine _createCryptoEngine(String appCode, String packageName) {
+    return DramaCryptoEngine(
+      appCode: appCode,
+      packageName: packageName,
+      appNativeSecret: defaultAppNativeSecret,
+    );
+  }
 
   /// Resolves relative media paths (`/v1/stream/...`) against primaryApiUrl.
   String resolveMediaUrl(String relativeOrFullUrl) {
@@ -78,45 +123,53 @@ class AppStartupCoordinator {
     final pkgInfo = await PackageInfo.fromPlatform();
     final deviceId = await getOrCreatePersistentDeviceId();
 
-    if (!_initialized) {
-      crypto = DramaCryptoEngine(
-        appCode: Platform.isIOS ? 'shorttv_ios' : 'default_app',
-        packageName: pkgInfo.packageName,
-        appNativeSecret: '<APP_NATIVE_SECRET_FROM_CMS>', // Nên đọc qua Dart FFI C++ khi release
+    if (!hasValidNativeSecret) {
+      debugPrint(
+        '[DramaStartup] WARNING: APP_NATIVE_SECRET is still using the CMS '
+        'placeholder for package "${pkgInfo.packageName}". Signed requests '
+        'will fail with HTTP 403 "Access denied." until configured via '
+        'defaultAppNativeSecret or --dart-define=APP_NATIVE_SECRET=...',
       );
+    }
+
+    if (_crypto == null || _crypto!.packageName != pkgInfo.packageName) {
+      final existingAppCode = _crypto?.appCode ??
+          (Platform.isIOS ? 'shorttv_ios' : 'default_app');
+      _crypto = _createCryptoEngine(existingAppCode, pkgInfo.packageName);
 
       final savedJwt = await _storage.read(key: _accessTokenKey);
       if (savedJwt != null && savedJwt.isNotEmpty) {
-        crypto.accessToken = savedJwt;
+        _crypto!.accessToken = savedJwt;
       }
-
-      // BƯỚC 0: Đọc & giải mã 9 key phẳng rc_* từ Firebase Remote Config (0% JSON)
-    final rcService = DramaRemoteConfigService(
-      cryptoEngine: crypto,
-      compiledDefaultApiUrl: 'https://api.dramota.com',
-    );
-    bootstrap = await rcService.fetchAndDecryptBootstrap();
-    if (bootstrap.isMaintenance) {
-      throw StateError(bootstrap.maintenanceMessage);
     }
 
-    // Khởi tạo Dio kèm Security Interceptor + Failover Domain dự phòng
-    dio = Dio(BaseOptions(
-      baseUrl: bootstrap.primaryApiUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 15),
-    ));
-    dio.interceptors.add(DramaSecurityDioInterceptor(
-      dio: dio,
-      crypto: crypto,
-      fallbackApiUrls: bootstrap.fallbackApiUrls,
-      versionCode: pkgInfo.buildNumber.isEmpty ? '100' : pkgInfo.buildNumber,
-      deviceId: deviceId,
-      getAppLanguage: () => AppConstants.selectedLanguageCode,
-      timezoneName: DateTime.now().timeZoneName,
-      onSessionRefreshNeeded: () => _performInitHandshake(deviceId, pkgInfo),
-    ));
-    _initialized = true;
+    if (!_initialized || _bootstrap == null) {
+      // BƯỚC 0: Đọc & giải mã 9 key phẳng rc_* từ Firebase Remote Config (0% JSON)
+      final rcService = DramaRemoteConfigService(
+        cryptoEngine: _crypto!,
+        compiledDefaultApiUrl: 'https://api.dramota.com',
+      );
+      final fetchedBootstrap = await rcService.fetchAndDecryptBootstrap();
+      if (fetchedBootstrap.isMaintenance) {
+        throw StateError(fetchedBootstrap.maintenanceMessage);
+      }
+
+      _bootstrap = fetchedBootstrap;
+      dio.options.baseUrl = fetchedBootstrap.primaryApiUrl;
+      if (!_interceptorAdded) {
+        dio.interceptors.add(DramaSecurityDioInterceptor(
+          dio: dio,
+          crypto: _crypto!,
+          fallbackApiUrls: fetchedBootstrap.fallbackApiUrls,
+          versionCode: pkgInfo.buildNumber.isEmpty ? '100' : pkgInfo.buildNumber,
+          deviceId: deviceId,
+          getAppLanguage: () => AppConstants.selectedLanguageCode,
+          timezoneName: DateTime.now().timeZoneName,
+          onSessionRefreshNeeded: () => _performInitHandshake(deviceId, pkgInfo),
+        ));
+        _interceptorAdded = true;
+      }
+      _initialized = true;
     }
 
     // BƯỚC 1: Gọi POST /v1/app/init
@@ -165,7 +218,11 @@ class AppStartupCoordinator {
     }
 
     final resp = await dio.post('/v1/app/init', data: payload);
-    final initData = resp.data['data'] as Map<String, dynamic>;
+    final body = resp.data;
+    if (body is! Map<String, dynamic> || body['data'] is! Map<String, dynamic>) {
+      throw FormatException('Unexpected /v1/app/init response: $body');
+    }
+    final initData = body['data'] as Map<String, dynamic>;
 
     // Lưu ngay session_token & ephemeral_seed vào CryptoEngine cho toàn bộ phiên làm việc!
     final sess = (initData['session'] as Map<String, dynamic>?) ??

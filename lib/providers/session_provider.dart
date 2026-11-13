@@ -59,6 +59,8 @@ class SessionState {
 // ============================================================================
 
 class SessionNotifier extends AsyncNotifier<SessionState> {
+  Future<SessionState>? _inFlightInit;
+
   @override
   Future<SessionState> build() async {
     return const SessionState();
@@ -67,7 +69,17 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
   /// Runs the full startup flow:
   /// 1. Bootstrap RC keys → 2. Dio setup → 3. POST /v1/app/init
   /// Returns the initialized state. Throws on maintenance/force-update.
-  Future<SessionState> initializeSession() async {
+  Future<SessionState> initializeSession() {
+    final existing = _inFlightInit;
+    if (existing != null) return existing;
+    final future = _runInitializeSession().whenComplete(() {
+      _inFlightInit = null;
+    });
+    _inFlightInit = future;
+    return future;
+  }
+
+  Future<SessionState> _runInitializeSession() async {
     state = const AsyncValue.loading();
     try {
       final coordinator = inject<AppStartupCoordinator>();
@@ -91,15 +103,29 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       state = AsyncValue.data(sessionState);
       return sessionState;
     } on StateError catch (e, st) {
+      debugPrint('SessionNotifier.initializeSession StateError: $e');
       state = AsyncValue.error(e, st);
       rethrow;
     } catch (e, st) {
+      debugPrint('SessionNotifier.initializeSession error: $e');
       final errorState = SessionState(
         isInitialized: false,
         error: e.toString(),
       );
       state = AsyncValue.error(e, st);
       return errorState;
+    }
+  }
+
+  /// Ensures the session is initialized before screen retry/refresh calls.
+  Future<bool> ensureInitialized() async {
+    if (state.asData?.value.isInitialized == true) return true;
+    try {
+      final res = await initializeSession();
+      return res.isInitialized;
+    } catch (e) {
+      debugPrint('SessionNotifier.ensureInitialized failed: $e');
+      return false;
     }
   }
 
@@ -145,3 +171,30 @@ final dioProvider = Provider<Dio>((ref) {
   }
   return dio;
 });
+
+/// Extracts a concise user-facing error message from Dio / runtime errors.
+String? formatDisplayApiError(Object? err) {
+  if (err == null) return null;
+  if (err is DioException) {
+    final msg = err.message?.trim();
+    if (msg != null && msg.isNotEmpty) return msg;
+  }
+  return err.toString();
+}
+
+extension SessionAsyncX on AsyncValue<SessionState> {
+  bool get isReady => asData?.value.isInitialized ?? false;
+
+  Object? get failure => error ?? asData?.value.error;
+
+  String? get failureText => formatDisplayApiError(failure);
+}
+
+/// Ensures session initialization before executing a user-triggered retry or
+/// pull-to-refresh on any screen, while keeping offline widget tests safe.
+Future<bool> ensureSessionForUserAction(WidgetRef ref) async {
+  if (AppConstants.isFlutterTest) {
+    return ref.read(sessionProvider).isReady;
+  }
+  return ref.read(sessionProvider.notifier).ensureInitialized();
+}

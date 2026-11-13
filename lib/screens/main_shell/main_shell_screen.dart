@@ -8,7 +8,8 @@ import '../../widgets/exit_app_dialog.dart';
 import '../../widgets/home_collapsible_ad.dart';
 import '../home/home_screen.dart';
 import '../profile/profile_screen.dart';
-import '../rewards/rewards_screen.dart';
+// TODO(IAP): Re-enable RewardsScreen tab when IAP is integrated.
+// import '../rewards/rewards_screen.dart';
 import '../shorts/shorts_feed_screen.dart';
 import '../watchlist/watchlist_screen.dart';
 
@@ -47,7 +48,8 @@ class MainShellScreen extends ConsumerWidget {
                 isTabActive: currentIndex == 1,
               ),
               const WatchlistScreen(key: ValueKey('tab_2_mylist')),
-              const RewardsScreen(key: ValueKey('tab_3_rewards')),
+              // TODO(IAP): Re-enable Rewards tab in v2 when IAP is ready.
+              // const RewardsScreen(key: ValueKey('tab_3_rewards')),
               const ProfileScreen(key: ValueKey('tab_4_profile')),
             ],
           ),
@@ -97,11 +99,12 @@ class _FiveTabBottomBar extends StatelessWidget {
         activeAsset: 'assets/icons/ic_nav_mylist_selected.png',
         label: locale.tr('nav_watchlist'),
       ),
-      (
-        inactiveAsset: 'assets/icons/ic_nav_rewards.png',
-        activeAsset: 'assets/icons/ic_nav_rewards_selected.png',
-        label: locale.tr('nav_rewards'),
-      ),
+      // TODO(IAP): Re-enable Rewards nav item in v2 when IAP is ready.
+      // (
+      //   inactiveAsset: 'assets/icons/ic_nav_rewards.png',
+      //   activeAsset: 'assets/icons/ic_nav_rewards_selected.png',
+      //   label: locale.tr('nav_rewards'),
+      // ),
       (
         inactiveAsset: 'assets/icons/ic_nav_profile.png',
         activeAsset: 'assets/icons/ic_nav_profile_selected.png',

@@ -67,7 +67,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _onRefresh() async {
-    if (ref.read(sessionProvider).value?.isInitialized != true) return;
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready || !mounted) return;
     await Future.wait([
       ref.read(accountProvider.notifier).fetchProfile(),
       ref
@@ -381,15 +382,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  String _formatVipSubtitle(LocaleState locale, WalletState wallet, UserProfile? profile) {
-    final isVip = wallet.isVip || (profile?.isVip ?? false);
-    final exp = wallet.vipExpiresAt ?? profile?.vipExpiresAt;
-    if (isVip && exp != null && exp.isNotEmpty) {
-      final shortDate = exp.length >= 10 ? exp.substring(0, 10) : exp;
-      return 'Expires $shortDate';
-    }
-    return locale.tr('vip_enjoy_benefits');
-  }
+  // TODO(IAP): Re-enable when VIP banner is restored with IAP.
+  // String _formatVipSubtitle(LocaleState locale, WalletState wallet, UserProfile? profile) {
+  //   final isVip = wallet.isVip || (profile?.isVip ?? false);
+  //   final exp = wallet.vipExpiresAt ?? profile?.vipExpiresAt;
+  //   if (isVip && exp != null && exp.isNotEmpty) {
+  //     final shortDate = exp.length >= 10 ? exp.substring(0, 10) : exp;
+  //     return 'Expires $shortDate';
+  //   }
+  //   return locale.tr('vip_enjoy_benefits');
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -463,9 +465,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => ref
-                              .read(shellTabIndexProvider.notifier)
-                              .setTab(3),
+                          // TODO(IAP): Re-enable tap to Rewards when IAP is integrated.
+                          // onTap: () => ref
+                          //     .read(shellTabIndexProvider.notifier)
+                          //     .setTab(3),
                           child: Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 10.w,
@@ -701,9 +704,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             value: '${streak}d',
                             label: 'Streak',
                             valueColor: AppColors.gold,
-                            onTap: () => ref
-                                .read(shellTabIndexProvider.notifier)
-                                .setTab(3),
+                            // TODO(IAP): Re-enable tap to Rewards check-in in v2.
+                            // onTap: () => ref
+                            //     .read(shellTabIndexProvider.notifier)
+                            //     .setTab(3),
                           ),
                         ],
                       ),
@@ -711,75 +715,76 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
                     SizedBox(height: 12.h),
 
+                    // TODO(IAP): Re-enable Golden "Unlock VIP" Banner Card when IAP is integrated.
                     // 4. Golden "Unlock VIP" Banner Card
-                    GestureDetector(
-                      onTap: () =>
-                          ref.read(shellTabIndexProvider.notifier).setTab(3),
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14.w,
-                          vertical: 12.h,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.profileVipGoldGradient,
-                          borderRadius: BorderRadius.circular(14.r),
-                        ),
-                        child: Row(
-                          children: [
-                            Transform.rotate(
-                              angle: -0.14,
-                              child: Image.asset(
-                                'assets/images/vip_crown.png',
-                                width: 44.w,
-                                height: 44.w,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                            SizedBox(width: 10.w),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    isVip
-                                        ? locale.tr('vip_activated_title')
-                                        : locale.tr('unlock_vip_title'),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.vipBannerTitle,
-                                  ),
-                                  SizedBox(height: 2.h),
-                                  Text(
-                                    _formatVipSubtitle(locale, wallet, profile),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTextStyles.vipBannerSubtitle,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(width: 8.w),
-                            Container(
-                              height: 34.h,
-                              padding: EdgeInsets.symmetric(horizontal: 18.w),
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: AppColors.vipActivateBtnBg,
-                                borderRadius: BorderRadius.circular(18.r),
-                              ),
-                              child: Text(
-                                isVip
-                                    ? locale.tr('plan_active')
-                                    : locale.tr('activate_btn'),
-                                style: AppTextStyles.vipActivateButton,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    SizedBox(height: 14.h),
+                    // GestureDetector(
+                    //   onTap: () =>
+                    //       ref.read(shellTabIndexProvider.notifier).setTab(3),
+                    //   child: Container(
+                    //     padding: EdgeInsets.symmetric(
+                    //       horizontal: 14.w,
+                    //       vertical: 12.h,
+                    //     ),
+                    //     decoration: BoxDecoration(
+                    //       gradient: AppColors.profileVipGoldGradient,
+                    //       borderRadius: BorderRadius.circular(14.r),
+                    //     ),
+                    //     child: Row(
+                    //       children: [
+                    //         Transform.rotate(
+                    //           angle: -0.14,
+                    //           child: Image.asset(
+                    //             'assets/images/vip_crown.png',
+                    //             width: 44.w,
+                    //             height: 44.w,
+                    //             fit: BoxFit.contain,
+                    //           ),
+                    //         ),
+                    //         SizedBox(width: 10.w),
+                    //         Expanded(
+                    //           child: Column(
+                    //             crossAxisAlignment: CrossAxisAlignment.start,
+                    //             children: [
+                    //               Text(
+                    //                 isVip
+                    //                     ? locale.tr('vip_activated_title')
+                    //                     : locale.tr('unlock_vip_title'),
+                    //                 maxLines: 1,
+                    //                 overflow: TextOverflow.ellipsis,
+                    //                 style: AppTextStyles.vipBannerTitle,
+                    //               ),
+                    //               SizedBox(height: 2.h),
+                    //               Text(
+                    //                 _formatVipSubtitle(locale, wallet, profile),
+                    //                 maxLines: 1,
+                    //                 overflow: TextOverflow.ellipsis,
+                    //                 style: AppTextStyles.vipBannerSubtitle,
+                    //               ),
+                    //             ],
+                    //           ),
+                    //         ),
+                    //         SizedBox(width: 8.w),
+                    //         Container(
+                    //           height: 34.h,
+                    //           padding: EdgeInsets.symmetric(horizontal: 18.w),
+                    //           alignment: Alignment.center,
+                    //           decoration: BoxDecoration(
+                    //             color: AppColors.vipActivateBtnBg,
+                    //             borderRadius: BorderRadius.circular(18.r),
+                    //           ),
+                    //           child: Text(
+                    //             isVip
+                    //                 ? locale.tr('plan_active')
+                    //                 : locale.tr('activate_btn'),
+                    //             style: AppTextStyles.vipActivateButton,
+                    //           ),
+                    //         ),
+                    //       ],
+                    //     ),
+                    //   ),
+                    // ),
+                    //
+                    // SizedBox(height: 14.h),
 
                     // 5. Primary Menu Items (menu_language stays immediately visible above the fold)
                     _ProfileMenuTile(
@@ -887,7 +892,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
             ),
-            const BottomNativeAllAd(tabIndex: 4),
+            // TODO(IAP): Restore tabIndex: 4 when Rewards tab is re-enabled.
+            const BottomNativeAllAd(tabIndex: 3),
           ],
         ),
       ),
@@ -916,12 +922,12 @@ class _StatCell extends StatelessWidget {
   final String value;
   final String label;
   final Color? valueColor;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _StatCell({
     required this.value,
     required this.label,
-    required this.onTap,
+    this.onTap,
     this.valueColor,
   });
 

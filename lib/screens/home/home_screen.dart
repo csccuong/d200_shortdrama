@@ -206,6 +206,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
     });
 
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingTab = false;
+        _tabError = ref.read(sessionProvider).failureText;
+      });
+      return;
+    }
+
     try {
       final api = ref.read(homeApiServiceProvider);
       final lang = ref.read(localeProvider).appLanguage;
@@ -260,12 +270,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _isLoadingTab = false;
-        _tabError = e.toString();
+        _tabError = formatDisplayApiError(e);
       });
     }
   }
 
   Future<void> _handleRefresh() async {
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready || !mounted) return;
     final lang = ref.read(localeProvider).appLanguage;
     await ref.read(homeProvider.notifier).fetchHome(lang);
     if (_selectedTopTab != 0) {
@@ -312,9 +324,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final mylistState = ref.watch(mylistProvider);
     final locale = ref.watch(localeProvider);
 
+    ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
+      if (!(prev?.isReady ?? false) && next.isReady) {
+        final lang = ref.read(localeProvider).appLanguage;
+        if (ref.read(homeProvider).asData?.value.homeData == null) {
+          unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
+        }
+        if (_selectedTopTab != 0 && _tabDramas.isEmpty) {
+          unawaited(_loadTabDramas(reset: true));
+        }
+      }
+    });
+
     ref.listen<LocaleState>(localeProvider, (prev, next) {
       if (prev?.appLanguage != next.appLanguage &&
-          (sessionAsync.asData?.value.isInitialized ?? false)) {
+          sessionAsync.isReady) {
         unawaited(ref.read(homeProvider.notifier).fetchHome(next.appLanguage));
         if (_selectedTopTab != 0) {
           unawaited(_loadTabDramas(reset: true));
@@ -606,7 +630,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // Show top-level loading / error state if Home hasn't loaded yet
               if (_searchQuery.trim().isEmpty &&
                   homeData == null &&
-                  homeAsync.isLoading)
+                  (homeAsync.isLoading || sessionAsync.isLoading))
                 const SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -634,12 +658,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           SizedBox(height: 12.h),
                           Text(
-                            homeAsync.hasError
-                                ? '${homeAsync.error}'
-                                : locale.tr('empty_following'),
+                            formatDisplayApiError(homeAsync.error) ??
+                                sessionAsync.failureText ??
+                                locale.tr('empty_following'),
                             textAlign: TextAlign.center,
                             style: AppTextStyles.caption,
-                            maxLines: 3,
+                            maxLines: 4,
                             overflow: TextOverflow.ellipsis,
                           ),
                           SizedBox(height: 14.h),

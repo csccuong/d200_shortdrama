@@ -20,7 +20,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   final PageController _pageController = PageController();
   final ScrollController _favScrollCtrl = ScrollController();
   final ScrollController _historyScrollCtrl = ScrollController();
-  int _selectedTab = 0; // 0: My List (Favorites) | 1: Watch Later | 2: History
+  int _selectedTab = 0; // 0: My List (Favorites) | 1: History
   bool _didInitialLoad = false;
 
   @override
@@ -44,14 +44,19 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   }
 
   void _refreshAllListsIfSessionReady() {
-    final ready =
-        ref.read(sessionProvider).asData?.value.isInitialized ?? false;
-    if (!ready) return;
+    if (!ref.read(sessionProvider).isReady) return;
     final lang = ref.read(localeProvider).appLanguage;
     final notifier = ref.read(mylistProvider.notifier);
     unawaited(notifier.fetchFavorites(lang: lang));
-    unawaited(notifier.fetchWatchLater(lang: lang));
     unawaited(notifier.fetchHistory(lang: lang));
+  }
+
+  Future<void> _refreshWithSession(
+    Future<void> Function(String lang) action,
+  ) async {
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready || !mounted) return;
+    await action(ref.read(localeProvider).appLanguage);
   }
 
   void _onFavScroll() {
@@ -101,9 +106,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
               dramaId: drama.dramaId,
               initialEpisode: ep,
               initialPositionSec: pos,
-              sourceScreen: _selectedTab == 2
-                  ? 'history'
-                  : (_selectedTab == 1 ? 'watch_later' : 'my_list'),
+              sourceScreen: _selectedTab == 1 ? 'history' : 'my_list',
             ),
           );
     });
@@ -119,13 +122,19 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     final locale = ref.watch(localeProvider);
     final lang = locale.appLanguage;
 
+    ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
+      if (!(prev?.isReady ?? false) && next.isReady) {
+        _refreshAllListsIfSessionReady();
+      }
+    });
+
     return ColoredBox(
       color: AppColors.background,
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            // Top 3-Column Tab Bar: "My List" | "Watch Later" | "History"
+            // Top 2-Column Tab Bar: "My List" | "History"
             Padding(
               padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 8.h),
               child: Row(
@@ -139,16 +148,9 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                   ),
                   Expanded(
                     child: _WatchlistTopTab(
-                      label: locale.tr('saved'),
+                      label: locale.tr('tab_history'),
                       isSelected: _selectedTab == 1,
                       onTap: () => _selectTab(1),
-                    ),
-                  ),
-                  Expanded(
-                    child: _WatchlistTopTab(
-                      label: locale.tr('tab_history'),
-                      isSelected: _selectedTab == 2,
-                      onTap: () => _selectTab(2),
                     ),
                   ),
                 ],
@@ -168,9 +170,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                 children: [
                   // Page 0: Favorites (My List)
                   _buildFavoritesPage(mylist, locale, lang),
-                  // Page 1: Watch Later
-                  _buildWatchLaterPage(mylist, locale, lang),
-                  // Page 2: Watch History
+                  // Page 1: Watch History
                   _buildHistoryPage(mylist, locale, lang),
                 ],
               ),
@@ -198,8 +198,9 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     return RefreshIndicator(
       color: AppColors.primary,
       backgroundColor: AppColors.surfaceCard,
-      onRefresh: () =>
-          ref.read(mylistProvider.notifier).fetchFavorites(lang: lang),
+      onRefresh: () => _refreshWithSession(
+        (l) => ref.read(mylistProvider.notifier).fetchFavorites(lang: l),
+      ),
       child: mylist.favorites.isEmpty
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -249,72 +250,6 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     );
   }
 
-  Widget _buildWatchLaterPage(
-    MyListState mylist,
-    LocaleState locale,
-    String lang,
-  ) {
-    if (mylist.watchLater.isEmpty && mylist.isLoadingWatchLater) {
-      return const Center(
-        child: CircularProgressIndicator.adaptive(
-          valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBright),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      color: AppColors.primary,
-      backgroundColor: AppColors.surfaceCard,
-      onRefresh: () =>
-          ref.read(mylistProvider.notifier).fetchWatchLater(lang: lang),
-      child: mylist.watchLater.isEmpty
-          ? ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                SizedBox(
-                  height: 0.6.sh,
-                  child: _WatchlistEmptyView(
-                    imageAsset: 'assets/images/empty_mylist.png',
-                    title: locale.tr('empty_mylist_title'),
-                    subtitle: locale.tr('empty_mylist_desc'),
-                    ctaLabel: locale.tr('explore_dramas_btn'),
-                    onExplore: _exploreDramas,
-                  ),
-                ),
-              ],
-            )
-          : GridView.builder(
-              padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 24.h),
-              physics: AlwaysScrollableScrollPhysics(
-                parent: AppScreenUtils.adaptiveScrollPhysics,
-              ),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: AppScreenUtils.watchlistGridColumns(context),
-                mainAxisSpacing: 14.h,
-                crossAxisSpacing: 12.w,
-                childAspectRatio: 0.58,
-              ),
-              itemCount: mylist.watchLater.length,
-              itemBuilder: (context, idx) {
-                final d = mylist.watchLater[idx];
-                final epNo = (d.continueWatching?.episodeNumber ?? 0) > 0
-                    ? d.continueWatching!.episodeNumber
-                    : 1;
-                return _SavedPosterCard(
-                  drama: d,
-                  episodeLabel:
-                      '${locale.tr('episode_prefix')} $epNo / ${d.totalEpisodes > 0 ? d.totalEpisodes : epNo}',
-                  badgeIcon: Icons.watch_later_rounded,
-                  onTap: () => _openDrama(d),
-                  onRemove: () => unawaited(
-                    ref.read(mylistProvider.notifier).toggleWatchLater(d),
-                  ),
-                );
-              },
-            ),
-    );
-  }
-
   Widget _buildHistoryPage(
     MyListState mylist,
     LocaleState locale,
@@ -331,8 +266,9 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     return RefreshIndicator(
       color: AppColors.primary,
       backgroundColor: AppColors.surfaceCard,
-      onRefresh: () =>
-          ref.read(mylistProvider.notifier).fetchHistory(lang: lang),
+      onRefresh: () => _refreshWithSession(
+        (l) => ref.read(mylistProvider.notifier).fetchHistory(lang: l),
+      ),
       child: mylist.history.isEmpty
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),

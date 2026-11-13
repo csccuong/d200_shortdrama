@@ -57,13 +57,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   }
 
   void _bootstrapIfSessionReady() {
-    final ready =
-        ref.read(sessionProvider).asData?.value.isInitialized ?? false;
-    if (!ready) return;
+    if (!ref.read(sessionProvider).isReady) return;
     unawaited(_refreshAll());
   }
 
   Future<void> _refreshAll() async {
+    final ready = await ensureSessionForUserAction(ref);
+    if (!ready || !mounted) return;
     final lang = ref.read(localeProvider).appLanguage;
     await Future.wait([
       ref.read(rewardsProvider.notifier).fetchOverview(lang),
@@ -327,6 +327,12 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
     final locale = ref.watch(localeProvider);
     final wallet = ref.watch(walletProvider);
     final rewardsAsync = ref.watch(rewardsProvider);
+
+    ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
+      if (!(prev?.isReady ?? false) && next.isReady) {
+        unawaited(_refreshAll());
+      }
+    });
     final accountState = ref.watch(accountProvider);
     final homeVip =
         ref.watch(homeProvider).asData?.value.homeData?.vipExclusive ??

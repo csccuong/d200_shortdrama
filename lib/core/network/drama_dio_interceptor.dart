@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../security/drama_crypto_engine.dart';
 
 class DramaPaywallException extends DioException {
@@ -92,6 +93,25 @@ class DramaSecurityDioInterceptor extends Interceptor {
     handler.next(options);
   }
 
+  String? _extractServerMessage(Response<dynamic>? response) {
+    final data = response?.data;
+    Map<String, dynamic>? map;
+    if (data is Map<String, dynamic>) {
+      map = data;
+    } else if (data is Map) {
+      map = Map<String, dynamic>.from(data);
+    } else if (data is String && data.trim().startsWith('{')) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map) {
+          map = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+    }
+    final msg = map?['message']?.toString().trim();
+    return (msg != null && msg.isNotEmpty) ? msg : null;
+  }
+
   @override
   Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
     // Tự động chuyển sang domain dự phòng (rc_api_url_fallback) nếu domain chính lỗi kết nối/DNS
@@ -99,6 +119,7 @@ class DramaSecurityDioInterceptor extends Interceptor {
         err.type == DioExceptionType.connectionTimeout;
     final fbIdx = (err.requestOptions.extra['_drama_fb_idx'] as int?) ?? 0;
 
+    DioException finalErr = err;
     if (isConnErr && fbIdx < fallbackApiUrls.length) {
       final nextBase = fallbackApiUrls[fbIdx];
       dio.options.baseUrl = nextBase;
@@ -108,10 +129,26 @@ class DramaSecurityDioInterceptor extends Interceptor {
         final retryResp = await dio.fetch(retryOpts);
         return handler.resolve(retryResp);
       } on DioException catch (retryErr) {
-        return handler.next(retryErr);
+        finalErr = retryErr;
       }
     }
-    handler.next(err);
+
+    final status = finalErr.response?.statusCode;
+    final serverMsg = _extractServerMessage(finalErr.response);
+    debugPrint(
+      '[DramaAPI] HTTP ${status ?? finalErr.type.name} '
+      '${finalErr.requestOptions.method} ${finalErr.requestOptions.uri.path} -> '
+      '${serverMsg ?? finalErr.message}',
+    );
+
+    if (serverMsg != null) {
+      return handler.next(
+        finalErr.copyWith(
+          message: status != null ? 'HTTP $status: $serverMsg' : serverMsg,
+        ),
+      );
+    }
+    handler.next(finalErr);
   }
 
   @override

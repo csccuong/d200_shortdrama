@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/di/injection.dart';
 import '../models/feed_response.dart';
 import '../services/api/feed_api_service.dart';
+import 'session_provider.dart';
 
 // ============================================================================
 // FEED STATE — For You vertical swipe feed (cursor-based pagination)
@@ -16,6 +17,7 @@ class FeedState {
   final bool isLoadingMore;
   final String cohort;
   final List<Map<String, String>> pendingEvents;
+  final String? error;
 
   const FeedState({
     this.items = const [],
@@ -24,6 +26,7 @@ class FeedState {
     this.isLoadingMore = false,
     this.cohort = '',
     this.pendingEvents = const [],
+    this.error,
   });
 
   FeedState copyWith({
@@ -33,6 +36,8 @@ class FeedState {
     bool? isLoadingMore,
     String? cohort,
     List<Map<String, String>>? pendingEvents,
+    String? error,
+    bool clearError = false,
   }) {
     return FeedState(
       items: items ?? this.items,
@@ -41,6 +46,7 @@ class FeedState {
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
       cohort: cohort ?? this.cohort,
       pendingEvents: pendingEvents ?? this.pendingEvents,
+      error: clearError ? null : (error ?? this.error),
     );
   }
 }
@@ -60,7 +66,7 @@ class FeedNotifier extends Notifier<FeedState> {
 
   /// Fetches the initial page with cursor='0', count=20.
   Future<void> fetchInitialFeed(String lang) async {
-    state = state.copyWith(isLoadingMore: true);
+    state = state.copyWith(isLoadingMore: true, clearError: true);
     try {
       final response = await _service.fetchForYouFeed(
         cursor: '0',
@@ -77,7 +83,10 @@ class FeedNotifier extends Notifier<FeedState> {
       );
     } catch (e) {
       debugPrint('FeedNotifier.fetchInitialFeed error: $e');
-      state = state.copyWith(isLoadingMore: false);
+      state = state.copyWith(
+        isLoadingMore: false,
+        error: formatDisplayApiError(e),
+      );
     }
   }
 

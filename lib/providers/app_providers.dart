@@ -55,8 +55,8 @@ final videoControllerFactoryProvider = Provider<VideoControllerFactory>((ref) {
 });
 
 // ============================================================================
-// 0.5 BOTTOM SHELL TAB NAVIGATION PROVIDER (5 Tabs: 0..4)
-// 0: Home | 1: For you | 2: My List | 3: Rewards | 4: Profile
+// 0.5 BOTTOM SHELL TAB NAVIGATION PROVIDER (4 Active Tabs: 0..3; Rewards hidden)
+// 0: Home | 1: For you | 2: My List | /* 3: Rewards | */ 3: Profile
 // ============================================================================
 
 class ShellTabNotifier extends Notifier<int> {
@@ -64,7 +64,8 @@ class ShellTabNotifier extends Notifier<int> {
   int build() => 0;
 
   void setTab(int index) {
-    state = index.clamp(0, 4);
+    // TODO(IAP): Restore clamp(0, 4) when Rewards tab is re-enabled.
+    state = index.clamp(0, 3);
   }
 }
 
