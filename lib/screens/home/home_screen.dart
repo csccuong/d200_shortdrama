@@ -23,35 +23,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final PageController _bannerController = PageController();
   final ScrollController _scrollController = ScrollController();
 
-  static const List<String> _topTabKeys = [
-    'tab_discover',
-    'tab_new',
-    'tab_categories',
-    'tab_vip',
-    'tab_filter',
-    'tab_new_release',
-    'tab_ranking',
-  ];
-
   Timer? _searchDebounce;
   bool _didBootstrap = false;
 
-  int _selectedTopTab = 0;
   String _selectedCategory = 'all';
   String _selectedTag = '';
-  String _selectedCountry = 'all';
-  String _selectedAudioMode = 'all';
   String _sortBy = 'popular';
-  String _rankingType = 'most_viewed';
   String _searchQuery = '';
   int _bannerIndex = 0;
 
-  // Dedicated state for filtered tabs (New, Categories, VIP, Filter, Ranking)
-  List<DramaCard> _tabDramas = [];
-  int _tabPage = 1;
-  bool _tabHasMore = false;
-  bool _isLoadingTab = false;
-  String? _tabError;
+  // Dedicated state for API category / tag browsing (/v1/dramas/browse)
+  List<DramaCard> _categoryDramas = [];
+  int _categoryPage = 1;
+  bool _categoryHasMore = false;
+  bool _isLoadingCategory = false;
+  String? _categoryError;
 
   // Dedicated state for Search & Hot keywords
   List<DramaCard> _searchResults = [];
@@ -103,14 +89,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (pos.pixels < pos.maxScrollExtent - 320) return;
 
     if (_searchQuery.trim().isNotEmpty) return;
-    if (_selectedTopTab == 0) {
+    if (_selectedCategory == 'all') {
       unawaited(
         ref
             .read(homeProvider.notifier)
             .loadMoreRecommended(lang: ref.read(localeProvider).appLanguage),
       );
-    } else if (_tabHasMore && !_isLoadingTab) {
-      unawaited(_loadTabDramas(reset: false));
+    } else if (_categoryHasMore && !_isLoadingCategory) {
+      unawaited(_loadCategoryDramas(reset: false));
     }
   }
 
@@ -186,23 +172,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  Future<void> _selectTopTab(int idx) async {
+  Future<void> _selectCategory(String slug, {String? tag}) async {
+    final nextTag = tag ?? (slug == 'all' ? '' : _selectedTag);
     setState(() {
-      _selectedTopTab = idx;
-      _tabError = null;
+      _selectedCategory = slug;
+      _selectedTag = nextTag;
+      _categoryError = null;
+      if (slug == 'all') {
+        _categoryDramas = [];
+        _categoryPage = 1;
+        _categoryHasMore = false;
+      }
     });
-    if (idx != 0) {
-      await _loadTabDramas(reset: true);
+    if (slug != 'all') {
+      await _loadCategoryDramas(reset: true);
     }
   }
 
-  Future<void> _loadTabDramas({required bool reset}) async {
-    if (_isLoadingTab && !reset) return;
-    final nextPage = reset ? 1 : (_tabPage + 1);
+  Future<void> _loadCategoryDramas({required bool reset}) async {
+    if (_selectedCategory == 'all') return;
+    if (_isLoadingCategory && !reset) return;
+    final nextPage = reset ? 1 : (_categoryPage + 1);
     setState(() {
-      _isLoadingTab = true;
+      _isLoadingCategory = true;
       if (reset) {
-        _tabError = null;
+        _categoryError = null;
       }
     });
 
@@ -210,8 +204,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!ready) {
       if (!mounted) return;
       setState(() {
-        _isLoadingTab = false;
-        _tabError = ref.read(sessionProvider).failureText;
+        _isLoadingCategory = false;
+        _categoryError = ref.read(sessionProvider).failureText;
       });
       return;
     }
@@ -219,58 +213,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final api = ref.read(homeApiServiceProvider);
       final lang = ref.read(localeProvider).appLanguage;
-      late final ({List<DramaCard> items, dynamic pagination}) res;
-
-      switch (_selectedTopTab) {
-        case 1:
-        case 5:
-          res = await api.fetchNewDramas(page: nextPage, pageSize: 21, lang: lang);
-          break;
-        case 3:
-          res = await api.browseDramas(
-            page: nextPage,
-            pageSize: 21,
-            isVip: 'vip',
-            sort: _sortBy,
-            lang: lang,
-          );
-          break;
-        case 6:
-          res = await api.fetchRanking(
-            type: _rankingType,
-            page: nextPage,
-            pageSize: 21,
-            lang: lang,
-          );
-          break;
-        case 2:
-        case 4:
-        default:
-          res = await api.browseDramas(
-            page: nextPage,
-            pageSize: 21,
-            country: _selectedCountry,
-            audioMode: _selectedAudioMode,
-            category: _selectedCategory,
-            tags: _selectedTag,
-            sort: _sortBy,
-            lang: lang,
-          );
-          break;
-      }
+      final res = await api.browseDramas(
+        page: nextPage,
+        pageSize: 21,
+        category: _selectedCategory,
+        tags: _selectedTag,
+        sort: _sortBy,
+        lang: lang,
+      );
 
       if (!mounted) return;
       setState(() {
-        _tabDramas = reset ? res.items : [..._tabDramas, ...res.items];
-        _tabPage = res.pagination.page as int;
-        _tabHasMore = res.pagination.hasMore as bool;
-        _isLoadingTab = false;
+        _categoryDramas =
+            reset ? res.items : [..._categoryDramas, ...res.items];
+        _categoryPage = res.pagination.page;
+        _categoryHasMore = res.pagination.hasMore;
+        _isLoadingCategory = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoadingTab = false;
-        _tabError = formatDisplayApiError(e);
+        _isLoadingCategory = false;
+        _categoryError = formatDisplayApiError(e);
       });
     }
   }
@@ -280,8 +244,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!ready || !mounted) return;
     final lang = ref.read(localeProvider).appLanguage;
     await ref.read(homeProvider.notifier).fetchHome(lang);
-    if (_selectedTopTab != 0) {
-      await _loadTabDramas(reset: true);
+    if (_selectedCategory != 'all') {
+      await _loadCategoryDramas(reset: true);
     }
     if (_searchQuery.trim().isNotEmpty) {
       await _executeSearch(_searchQuery.trim());
@@ -300,7 +264,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       dramaId: drama.dramaId,
       episodeNumber: ep,
       sourceScreen: 'home',
-      props: {'tab': _topTabKeys[_selectedTopTab]},
+      props: {'category': _selectedCategory},
     );
 
     showInterAllThen(context, ref, () {
@@ -330,8 +294,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (ref.read(homeProvider).asData?.value.homeData == null) {
           unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
         }
-        if (_selectedTopTab != 0 && _tabDramas.isEmpty) {
-          unawaited(_loadTabDramas(reset: true));
+        if (_selectedCategory != 'all' && _categoryDramas.isEmpty) {
+          unawaited(_loadCategoryDramas(reset: true));
         }
       }
     });
@@ -340,8 +304,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (prev?.appLanguage != next.appLanguage &&
           sessionAsync.isReady) {
         unawaited(ref.read(homeProvider.notifier).fetchHome(next.appLanguage));
-        if (_selectedTopTab != 0) {
-          unawaited(_loadTabDramas(reset: true));
+        if (_selectedCategory != 'all') {
+          unawaited(_loadCategoryDramas(reset: true));
         }
       }
     });
@@ -350,9 +314,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final homeData = homeState?.homeData;
     final taxonomy = sessionAsync.asData?.value.initData?.taxonomy;
 
-    // Derive categories from taxonomy or homeData
-    final categories = <({String slug, String name})>[
-      (slug: 'all', name: locale.tr('all_categories')),
+    // Derive categories strictly from API taxonomy or homeData
+    final rawApiCategories = <({String slug, String name})>[
       if (taxonomy != null && taxonomy.categories.isNotEmpty)
         ...taxonomy.categories.map((c) => (slug: c.slug, name: c.name))
       else if (homeData != null)
@@ -362,22 +325,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             name: (c['name'] ?? c['slug'] ?? '').toString(),
           ),
         ),
+    ].where((c) => c.slug.trim().isNotEmpty && c.name.trim().isNotEmpty).toList();
+
+    final categories = <({String slug, String name})>[
+      if (rawApiCategories.isNotEmpty) ...[
+        (slug: 'all', name: locale.tr('all_categories')),
+        ...rawApiCategories,
+      ] else if (_selectedCategory != 'all') ...[
+        (slug: 'all', name: locale.tr('all_categories')),
+        (
+          slug: _selectedCategory,
+          name: _resolveCategoryTitle(_selectedCategory, const [], homeData, locale),
+        ),
+      ],
     ];
 
-    final sorts = (taxonomy?.facets.sorts.isNotEmpty ?? false)
-        ? taxonomy!.facets.sorts
-        : [
-            FacetSort(code: 'popular', name: locale.tr('sort_popular')),
-            FacetSort(code: 'rating', name: locale.tr('sort_rating')),
-            FacetSort(code: 'latest', name: locale.tr('tab_new')),
-            FacetSort(code: 'trending', name: locale.tr('trending_now')),
-          ];
+    final sorts = taxonomy?.facets.sorts ?? const <FacetSort>[];
 
-    final banners = homeData != null
-        ? (homeData.banners.isNotEmpty
-            ? homeData.banners
-            : (homeData.recommended.take(4).toList()))
-        : const <DramaCard>[];
+    final banners = homeData?.banners ?? const <DramaCard>[];
 
     final continueItems = <DramaCard>[
       if (homeData != null && homeData.continueWatching.isNotEmpty)
@@ -387,32 +352,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
 
     final trending = homeData?.trending ?? const <DramaCard>[];
+    final newReleases = homeData?.newReleases ?? const <DramaCard>[];
 
-    // Determine primary grid items for active top tab / search
+    // Determine primary grid items for active search / category / home feed
     late final List<DramaCard> gridItems;
     if (_searchQuery.trim().isNotEmpty) {
       gridItems = _searchResults;
-    } else if (_selectedTopTab == 0) {
+    } else if (_selectedCategory == 'all') {
       gridItems = homeState?.recommendedDramas ?? const <DramaCard>[];
-    } else if (_tabDramas.isNotEmpty) {
-      gridItems = _tabDramas;
-    } else if (homeData != null) {
-      switch (_selectedTopTab) {
-        case 1:
-        case 5:
-          gridItems = homeData.newReleases;
-          break;
-        case 3:
-          gridItems = homeData.vipExclusive;
-          break;
-        case 6:
-          gridItems = homeData.trending;
-          break;
-        default:
-          gridItems = homeState?.recommendedDramas ?? const [];
-      }
     } else {
-      gridItems = const [];
+      gridItems = _categoryDramas;
     }
 
     return ColoredBox(
@@ -536,94 +485,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
 
-              // 2. TOP SUB-NAVIGATION TAB BAR (flex-safe horizontal row)
-              SliverToBoxAdapter(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 2.h),
-                  scrollDirection: Axis.horizontal,
-                  physics: AppScreenUtils.adaptiveScrollPhysics,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: List.generate(_topTabKeys.length, (idx) {
-                      final isSelected = _selectedTopTab == idx;
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          right: idx < _topTabKeys.length - 1 ? 20.w : 0,
-                        ),
-                        child: GestureDetector(
-                          onTap: () => unawaited(_selectTopTab(idx)),
-                          behavior: HitTestBehavior.opaque,
-                          child: IntrinsicWidth(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  locale.tr(_topTabKeys[idx]),
-                                  style: isSelected
-                                      ? AppTextStyles.topTabActive
-                                      : AppTextStyles.topTabInactive,
-                                ),
-                                SizedBox(height: 6.h),
-                                Container(
-                                  height: 2.5.h,
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? AppColors.primary
-                                        : AppColors.transparent,
-                                    borderRadius: BorderRadius.circular(2.r),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-              ),
-
-              // 2b. FILTER / CATEGORY / RANKING CONTROLS
-              if (_searchQuery.trim().isEmpty &&
-                  (_selectedTopTab == 2 || _selectedTopTab == 4))
+              // 2. API CATEGORIES FILTER BAR (only shown when API provides categories or a section filter is active)
+              if (_searchQuery.trim().isEmpty && categories.isNotEmpty)
                 SliverToBoxAdapter(
                   child: _buildCategoryFilterBar(
                     categories: categories,
                     taxonomy: taxonomy,
                     sorts: sorts,
                     locale: locale,
-                  ),
-                ),
-
-              if (_searchQuery.trim().isEmpty && _selectedTopTab == 6)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 4.h),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          ('most_viewed', locale.tr('trending_now')),
-                          ('most_favorited', locale.tr('my_watchlist')),
-                          ('most_liked', 'Top Liked'),
-                          ('top_rated', locale.tr('sort_rating')),
-                        ].map((opt) {
-                          final active = _rankingType == opt.$1;
-                          return Padding(
-                            padding: EdgeInsets.only(right: 8.w),
-                            child: _FilterPill(
-                              label: opt.$2,
-                              active: active,
-                              onTap: () {
-                                setState(() => _rankingType = opt.$1);
-                                unawaited(_loadTabDramas(reset: true));
-                              },
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
                   ),
                 ),
 
@@ -642,7 +511,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 )
               else if (_searchQuery.trim().isEmpty &&
                   homeData == null &&
-                  _tabDramas.isEmpty)
+                  _categoryDramas.isEmpty)
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
@@ -682,9 +551,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 )
               else ...[
-                // 3. HERO BANNER CAROUSEL (Discover Tab)
+                // 3. HERO BANNER CAROUSEL (only from /v1/home banners)
                 if (_searchQuery.trim().isEmpty &&
-                    _selectedTopTab == 0 &&
+                    _selectedCategory == 'all' &&
                     banners.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -740,7 +609,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 // 4. CONTINUE WATCHING
                 if (_searchQuery.trim().isEmpty &&
-                    (_selectedTopTab == 0 || _selectedTopTab == 3) &&
+                    _selectedCategory == 'all' &&
                     continueItems.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -784,7 +653,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 // 5. TRENDING NOW (3 Cards with TOP 1..3 Ribbons)
                 if (_searchQuery.trim().isEmpty &&
-                    _selectedTopTab == 0 &&
+                    _selectedCategory == 'all' &&
                     trending.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -796,8 +665,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             padding: EdgeInsets.symmetric(horizontal: 14.w),
                             child: _SectionHeader(
                               title: locale.tr('trending_now'),
-                              seeAllLabel: locale.tr('see_all'),
-                              onSeeAll: () => unawaited(_selectTopTab(6)),
                             ),
                           ),
                           SizedBox(height: 10.h),
@@ -832,15 +699,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
 
+                // 5a. NEW RELEASES SHELF (from /v1/home)
+                if (_searchQuery.trim().isEmpty &&
+                    _selectedCategory == 'all' &&
+                    newReleases.isNotEmpty)
+                  _buildHorizontalShelfSliver(
+                    title: locale.tr('new_releases'),
+                    items: newReleases,
+                    locale: locale,
+                    showNewBadge: true,
+                  ),
+
                 // 5b. CATEGORY SECTIONS SHELVES (from /v1/home)
                 if (_searchQuery.trim().isEmpty &&
-                    _selectedTopTab == 0 &&
+                    _selectedCategory == 'all' &&
                     homeData != null &&
                     homeData.categorySections.isNotEmpty)
                   ...homeData.categorySections.take(3).map(
-                        (section) => _buildCategorySectionSliver(
-                          section,
-                          locale,
+                        (section) => _buildHorizontalShelfSliver(
+                          title: section.title.isNotEmpty
+                              ? '${section.icon} ${section.title}'.trim()
+                              : locale.trTag(section.slug),
+                          items: section.items,
+                          locale: locale,
+                          seeAllLabel: locale.tr('see_all'),
+                          onSeeAll: () => unawaited(
+                            _selectCategory(section.slug, tag: ''),
+                          ),
                         ),
                       ),
 
@@ -849,7 +734,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Padding(
                     padding: EdgeInsets.fromLTRB(14.w, 18.h, 14.w, 10.h),
                     child: Text(
-                      _sectionHeading(locale, gridItems.length),
+                      _sectionHeading(
+                        locale,
+                        gridItems.length,
+                        categories,
+                        homeData,
+                      ),
                       style: AppTextStyles.sectionTitle,
                     ),
                   ),
@@ -857,7 +747,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 // 7. LOADING / EMPTY / 3-COLUMN GRID
                 if ((_isSearching && _searchQuery.trim().isNotEmpty) ||
-                    (_isLoadingTab && gridItems.isEmpty))
+                    (_selectedCategory != 'all' &&
+                        _isLoadingCategory &&
+                        gridItems.isEmpty))
                   const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 40),
@@ -879,14 +771,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           unawaited(_executeSearch(_searchQuery.trim())),
                     ),
                   )
-                else if (_tabError != null &&
-                    _selectedTopTab != 0 &&
+                else if (_categoryError != null &&
+                    _selectedCategory != 'all' &&
                     gridItems.isEmpty)
                   SliverToBoxAdapter(
                     child: _InlineRetryBox(
-                      message: _tabError!,
+                      message: _categoryError!,
                       retryLabel: locale.tr('retry_btn'),
-                      onRetry: () => unawaited(_loadTabDramas(reset: true)),
+                      onRetry: () => unawaited(_loadCategoryDramas(reset: true)),
                     ),
                   )
                 else if (gridItems.isEmpty)
@@ -918,11 +810,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           return _PosterGridItem(
                             drama: d,
                             locale: locale,
-                            rankNumber: _selectedTopTab == 6
-                                ? (d.trendingRank ?? (idx + 1))
-                                : null,
-                            showNewBadge:
-                                _selectedTopTab == 1 || _selectedTopTab == 5,
                             onTap: () => _openDrama(d),
                           );
                         },
@@ -931,7 +818,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                   if ((homeState?.isLoadingMore ?? false) ||
-                      (_selectedTopTab != 0 && _isLoadingTab))
+                      (_selectedCategory != 'all' && _isLoadingCategory))
                     const SliverToBoxAdapter(
                       child: Padding(
                         padding: EdgeInsets.only(bottom: 24),
@@ -958,27 +845,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  String _sectionHeading(LocaleState locale, int count) {
+  String _resolveCategoryTitle(
+    String slug,
+    List<({String slug, String name})> categories,
+    HomeResponse? homeData,
+    LocaleState locale,
+  ) {
+    for (final c in categories) {
+      if (c.slug == slug) return c.name;
+    }
+    if (homeData != null) {
+      for (final s in homeData.categorySections) {
+        if (s.slug == slug && s.title.isNotEmpty) {
+          return '${s.icon} ${s.title}'.trim();
+        }
+      }
+    }
+    return locale.trTag(slug);
+  }
+
+  String _sectionHeading(
+    LocaleState locale,
+    int count,
+    List<({String slug, String name})> categories,
+    HomeResponse? homeData,
+  ) {
     if (_searchQuery.trim().isNotEmpty) {
       return '${locale.tr('search_results')} ($count)';
     }
-    switch (_selectedTopTab) {
-      case 1:
-      case 5:
-        return locale.tr('new_releases');
-      case 3:
-        return locale.tr('vip_exclusive');
-      case 6:
-        return locale.tr('top_ranking_dramas');
-      default:
-        return locale.tr('recommended_for_you');
+    if (_selectedCategory != 'all') {
+      return _resolveCategoryTitle(
+        _selectedCategory,
+        categories,
+        homeData,
+        locale,
+      );
     }
+    return locale.tr('recommended_for_you');
   }
 
-  Widget _buildCategorySectionSliver(
-    CategorySection section,
-    LocaleState locale,
-  ) {
+  Widget _buildHorizontalShelfSliver({
+    required String title,
+    required List<DramaCard> items,
+    required LocaleState locale,
+    String? seeAllLabel,
+    VoidCallback? onSeeAll,
+    bool showNewBadge = false,
+  }) {
     return SliverToBoxAdapter(
       child: Padding(
         padding: EdgeInsets.only(top: 16.h),
@@ -988,14 +901,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 14.w),
               child: _SectionHeader(
-                title: section.title.isNotEmpty
-                    ? '${section.icon} ${section.title}'.trim()
-                    : locale.trTag(section.slug),
-                seeAllLabel: locale.tr('see_all'),
-                onSeeAll: () {
-                  setState(() => _selectedCategory = section.slug);
-                  unawaited(_selectTopTab(2));
-                },
+                title: title,
+                seeAllLabel: seeAllLabel,
+                onSeeAll: onSeeAll,
               ),
             ),
             SizedBox(height: 10.h),
@@ -1005,15 +913,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: EdgeInsets.symmetric(horizontal: 14.w),
                 scrollDirection: Axis.horizontal,
                 physics: AppScreenUtils.adaptiveScrollPhysics,
-                itemCount: section.items.length,
+                itemCount: items.length,
                 separatorBuilder: (_, _) => SizedBox(width: 10.w),
                 itemBuilder: (context, idx) {
-                  final d = section.items[idx];
+                  final d = items[idx];
                   return SizedBox(
                     width: 108.w,
                     child: _PosterGridItem(
                       drama: d,
                       locale: locale,
+                      showNewBadge: showNewBadge,
                       onTap: () => _openDrama(d),
                     ),
                   );
@@ -1033,7 +942,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required LocaleState locale,
   }) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(14.w, 10.h, 14.w, 2.h),
+      padding: EdgeInsets.fromLTRB(14.w, 4.h, 14.w, 2.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1048,10 +957,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 final cat = categories[idx];
                 final active = cat.slug == _selectedCategory;
                 return GestureDetector(
-                  onTap: () {
-                    setState(() => _selectedCategory = cat.slug);
-                    unawaited(_loadTabDramas(reset: true));
-                  },
+                  onTap: () => unawaited(
+                    _selectCategory(
+                      cat.slug,
+                      tag: cat.slug == 'all' ? '' : _selectedTag,
+                    ),
+                  ),
                   child: Container(
                     padding: EdgeInsets.symmetric(
                       horizontal: 12.w,
@@ -1072,7 +983,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
             ),
           ),
-          if (_selectedTopTab == 2 &&
+          if (_selectedCategory != 'all' &&
               taxonomy != null &&
               taxonomy.tags.isNotEmpty) ...[
             SizedBox(height: 8.h),
@@ -1092,78 +1003,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       setState(() {
                         _selectedTag = active ? '' : tag.slug;
                       });
-                      unawaited(_loadTabDramas(reset: true));
+                      unawaited(_loadCategoryDramas(reset: true));
                     },
                   );
                 },
               ),
             ),
           ],
-          if (_selectedTopTab == 4) ...[
-            if (taxonomy != null && taxonomy.facets.countries.isNotEmpty) ...[
-              SizedBox(height: 8.h),
-              SizedBox(
-                height: 28.h,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: taxonomy.facets.countries.length + 1,
-                  separatorBuilder: (_, _) => SizedBox(width: 6.w),
-                  itemBuilder: (context, idx) {
-                    if (idx == 0) {
-                      return _FilterPill(
-                        label: locale.tr('cat_all'),
-                        active: _selectedCountry == 'all',
-                        onTap: () {
-                          setState(() => _selectedCountry = 'all');
-                          unawaited(_loadTabDramas(reset: true));
-                        },
-                      );
-                    }
-                    final c = taxonomy.facets.countries[idx - 1];
-                    return _FilterPill(
-                      label: '${c.flag} ${c.name}'.trim(),
-                      active: _selectedCountry == c.code,
-                      onTap: () {
-                        setState(() => _selectedCountry = c.code);
-                        unawaited(_loadTabDramas(reset: true));
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-            if (taxonomy != null && taxonomy.facets.audioModes.isNotEmpty) ...[
-              SizedBox(height: 8.h),
-              SizedBox(
-                height: 28.h,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: taxonomy.facets.audioModes.length + 1,
-                  separatorBuilder: (_, _) => SizedBox(width: 6.w),
-                  itemBuilder: (context, idx) {
-                    if (idx == 0) {
-                      return _FilterPill(
-                        label: locale.tr('sub_label'),
-                        active: _selectedAudioMode == 'all',
-                        onTap: () {
-                          setState(() => _selectedAudioMode = 'all');
-                          unawaited(_loadTabDramas(reset: true));
-                        },
-                      );
-                    }
-                    final a = taxonomy.facets.audioModes[idx - 1];
-                    return _FilterPill(
-                      label: a.name,
-                      active: _selectedAudioMode == a.code,
-                      onTap: () {
-                        setState(() => _selectedAudioMode = a.code);
-                        unawaited(_loadTabDramas(reset: true));
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+          if (_selectedCategory != 'all' && sorts.isNotEmpty) ...[
             SizedBox(height: 8.h),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -1176,7 +1023,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       active: _sortBy == opt.code,
                       onTap: () {
                         setState(() => _sortBy = opt.code);
-                        unawaited(_loadTabDramas(reset: true));
+                        unawaited(_loadCategoryDramas(reset: true));
                       },
                     ),
                   );
@@ -1295,13 +1142,13 @@ class _DramaBrandLogo extends StatelessWidget {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final String seeAllLabel;
-  final VoidCallback onSeeAll;
+  final String? seeAllLabel;
+  final VoidCallback? onSeeAll;
 
   const _SectionHeader({
     required this.title,
-    required this.seeAllLabel,
-    required this.onSeeAll,
+    this.seeAllLabel,
+    this.onSeeAll,
   });
 
   @override
@@ -1317,23 +1164,25 @@ class _SectionHeader extends StatelessWidget {
             style: AppTextStyles.sectionTitle,
           ),
         ),
-        SizedBox(width: 8.w),
-        GestureDetector(
-          onTap: onSeeAll,
-          behavior: HitTestBehavior.opaque,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(seeAllLabel, style: AppTextStyles.seeAll),
-              SizedBox(width: 2.w),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textMuted,
-                size: 16.sp,
-              ),
-            ],
+        if (seeAllLabel != null && onSeeAll != null) ...[
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: onSeeAll,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(seeAllLabel!, style: AppTextStyles.seeAll),
+                SizedBox(width: 2.w),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textMuted,
+                  size: 16.sp,
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
