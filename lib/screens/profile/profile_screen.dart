@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/screen_utils.dart';
@@ -208,6 +209,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           },
         );
       },
+    );
+  }
+
+  Future<void> _openPrivacyPolicy(
+    BuildContext context,
+    LocaleState locale,
+  ) async {
+    final uri = Uri.parse(AppConstants.privacyPolicyUrl);
+    for (final mode in const [
+      LaunchMode.inAppBrowserView,
+      LaunchMode.externalApplication,
+    ]) {
+      try {
+        if (await launchUrl(uri, mode: mode)) return;
+      } catch (e) {
+        debugPrint('Privacy policy launch ($mode) failed: $e');
+      }
+    }
+    if (!context.mounted) return;
+    _showLegalSheet(
+      context,
+      title: locale.tr('menu_privacy'),
+      content: locale.tr('privacy_content'),
+      iconAsset: _icPolicy,
     );
   }
 
@@ -866,12 +891,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     _ProfileMenuTile(
                       iconAsset: _icPolicy,
                       title: locale.tr('menu_privacy'),
-                      onTap: () => _showLegalSheet(
-                        context,
-                        title: locale.tr('menu_privacy'),
-                        content: locale.tr('privacy_content'),
-                        iconAsset: _icPolicy,
-                      ),
+                      onTap: () => _openPrivacyPolicy(context, locale),
                     ),
 
                     SizedBox(height: 12.h),

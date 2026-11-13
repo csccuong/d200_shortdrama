@@ -37,6 +37,7 @@ class AppConstants {
   static const String gsmAppId = '6af6905edfe0a3aefe4cb0e7';
   static const String adjustToken = 'den3ocinh4ao';
   static const String adjustIapToken = 'ua8nmv';
+  static const String privacyPolicyUrl = 'https://dramota.com/privacy';
 
   static final ValueNotifier<bool> isPremiumUser = ValueNotifier<bool>(false)
     ..addListener(() {
