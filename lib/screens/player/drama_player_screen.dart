@@ -466,4 +466,24 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                             style: AppTextStyles.playerHeaderTitle,
                           ),
                           Text(
-                            '$
+                            '${locale.tr('episode_prefix')} $_currentEpisode / $totalEpisodes',
+                            style: AppTextStyles.playerHeaderSubtitle,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          FloatingDramaNativeAd(
+            dramaSlug: _resolvedDramaId,
+            episodeNo: _currentEpisode,
+            hold: _nativeFullOpen || _paywallEpisodes.contains(_currentEpisode),
+          ),
+        ],
+      ),
+    );
+  }
+}
