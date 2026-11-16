@@ -86,14 +86,8 @@ class VipPackageHelper {
     int index,
     LocaleState locale,
   ) {
-    if (sub.features.isNotEmpty && sub.features.first.length <= 16) {
-      return sub.features.first;
-    }
     if (sub.productId == IapCatalog.monthlyProductId || index == 1) {
       return locale.tr('reward_save_30');
-    }
-    if (sub.productId == IapCatalog.yearlyProductId || index == 2) {
-      return '-74%';
     }
     return null;
   }

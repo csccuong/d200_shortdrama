@@ -9,6 +9,7 @@ import '../core/utils/vip_package_helper.dart';
 import '../providers/app_providers.dart';
 import '../services/firebase_remote_config_service.dart';
 import 'iap_subscription_footer.dart';
+import 'vip_package_card.dart';
 
 /// Full-featured VIP / Premium upsell popup shown on entering Home.
 class PremiumUpgradeDialog extends ConsumerStatefulWidget {
@@ -348,9 +349,10 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                                           ? 8.w
                                           : 0,
                                     ),
-                                    child: _PopupPlanCard(
+                                    child: VipPackageCard(
                                       package: pkg,
                                       isSelected: selected,
+                                      horizontalPadding: 6.w,
                                       onTap: () => setState(
                                         () => _selectedPlanIndex = idx,
                                       ),
@@ -463,78 +465,6 @@ class _PopupFeatureBadge extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PopupPlanCard extends StatelessWidget {
-  final RewardVipPackage package;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _PopupPlanCard({
-    required this.package,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 12.h),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.16)
-              : AppColors.rewardPlanCardBg,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: isSelected ? AppColors.gold : AppColors.borderSubtle,
-            width: isSelected ? 1.5 : 1.0,
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              package.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.rewardPlanTitle,
-            ),
-            SizedBox(height: 8.h),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                package.price,
-                style: AppTextStyles.rewardPlanPrice(isSelected: isSelected),
-              ),
-            ),
-            SizedBox(height: 6.h),
-            if (package.discountBadge != null)
-              Container(
-                height: 20.h,
-                padding: EdgeInsets.symmetric(horizontal: 8.w),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: Text(
-                  package.discountBadge!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.rewardSaveBadge,
-                ),
-              )
-            else
-              SizedBox(height: 20.h),
-          ],
-        ),
       ),
     );
   }
