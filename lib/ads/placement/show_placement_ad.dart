@@ -63,6 +63,22 @@ Future<bool> showRewardUnlock(BuildContext context, WidgetRef ref) async {
   if (!rewardAllEnabled(ref) || EasyAds.instance.isFullscreenAdShowing) {
     return false;
   }
+  return awaitRewardedUnlock(
+    context,
+    adId: MyAdIdName.rewardedAd.getId,
+    adIdName: MyAdIdName.rewardedAd,
+  );
+}
+
+/// Core rewarded-ad unlock flow shared across production UI and widget tests.
+Future<bool> awaitRewardedUnlock(
+  BuildContext context, {
+  required String adId,
+  String? adIdName,
+}) async {
+  if (EasyAds.instance.isFullscreenAdShowing) {
+    return false;
+  }
 
   final completer = Completer<bool>();
   var earned = false;
@@ -83,8 +99,8 @@ Future<bool> showRewardUnlock(BuildContext context, WidgetRef ref) async {
   final started = EasyAds.instance.showRewardAd(
     context,
     adNetwork: AdNetwork.admob,
-    adId: MyAdIdName.rewardedAd.getId,
-    adIdName: MyAdIdName.rewardedAd,
+    adId: adId,
+    adIdName: adIdName,
     adDissmissed: () {
       dismissed = true;
       if (completer.isCompleted) return;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/const/ad_id_extension.dart';
 import '../../ads/const/ad_id_name.dart';
@@ -404,7 +405,13 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                   final changed = visible
                       ? _paywallEpisodes.add(ep)
                       : _paywallEpisodes.remove(ep);
-                  if (changed && ep == _currentEpisode) {
+                  if (!changed || ep != _currentEpisode) return;
+                  if (SchedulerBinding.instance.schedulerPhase ==
+                      SchedulerPhase.persistentCallbacks) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) setState(() {});
+                    });
+                  } else {
                     setState(() {});
                   }
                 },

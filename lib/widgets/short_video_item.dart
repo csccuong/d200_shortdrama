@@ -158,6 +158,11 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         oldWidget.episodeNo != widget.episodeNo ||
         oldWidget.previewInfo?.videoUrl != widget.previewInfo?.videoUrl ||
         oldWidget.previewInfo?.expireAt != widget.previewInfo?.expireAt) {
+      if (oldWidget.episodeNo != widget.episodeNo &&
+          _lastNotifiedPaywallVisible) {
+        _lastNotifiedPaywallVisible = false;
+        widget.onPaywallVisibilityChanged?.call(oldWidget.episodeNo, false);
+      }
       _disposeController();
       _resetEpisodeState();
       if (widget.isActive) {
@@ -182,7 +187,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   void _resetEpisodeState() {
     _isLoadingPlay = false;
     _isInitialized = false;
-    _isErrorReset:
     _hasError = false;
     _errorMessage = '';
     _setPaywallState(null, '');
@@ -209,8 +213,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     _isInitialized = false;
     _hasError = false;
     _didTriggerEnd = false;
-    _paywall = null;
-    _blockReason = '';
+    _setPaywallState(null, '');
     _activeSubtitle = null;
     if (mounted) setState(() {});
 
@@ -251,9 +254,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       if (!mounted) return;
       setState(() {
         _isLoadingPlay = false;
-        _paywall = PaywallResponse.fromJson(e.paywallData);
-        _blockReason =
-            e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED';
+        _setPaywallState(
+          PaywallResponse.fromJson(e.paywallData),
+          e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED',
+        );
       });
     } catch (e, st) {
       debugPrint(
@@ -402,9 +406,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       if (!mounted) return;
       setState(() {
         _isLoadingPlay = false;
-        _paywall = PaywallResponse.fromJson(e.paywallData);
-        _blockReason =
-            e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED';
+        _setPaywallState(
+          PaywallResponse.fromJson(e.paywallData),
+          e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED',
+        );
       });
     } catch (e, st) {
       debugPrint(
@@ -761,13 +766,16 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       widget.onEpisodeUnlocked?.call(widget.episodeNo, unlockFullDrama);
 
       setState(() {
-        _paywall = null;
-        _blockReason = '';
+        _setPaywallState(null, '');
         _isUnlocking = false;
       });
-      final bundle = resp.toStreamBundle();
-      _streamBundle = bundle;
-      await _startVideoStream(bundle);
+      if (resp.videoUrl.trim().isNotEmpty) {
+        final bundle = resp.toStreamBundle();
+        _streamBundle = bundle;
+        await _startVideoStream(bundle);
+      } else {
+        await _initEpisode();
+      }
     } catch (e) {
       debugPrint('ShortVideoItem._performApiUnlock error: $e');
       if (!mounted) return;
@@ -799,6 +807,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
 
   @override
   void dispose() {
+    _notifyPaywallVisibility(false);
     WidgetsBinding.instance.removeObserver(this);
     _disposeController();
     super.dispose();
