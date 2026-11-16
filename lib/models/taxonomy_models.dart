@@ -37,6 +37,31 @@ class TagInfo {
   }
 }
 
+/// Hot keyword item from /v1/search/hot with localized display label and canonical tag slug.
+class HotKeywordItem {
+  final String keyword;
+  final String tagSlug;
+
+  const HotKeywordItem({
+    required this.keyword,
+    this.tagSlug = '',
+  });
+
+  /// Canonical query sent to /v1/search (server indexes tag_slug across all languages).
+  String get searchQuery => tagSlug.isNotEmpty ? tagSlug : keyword;
+
+  factory HotKeywordItem.fromDynamic(dynamic raw) {
+    if (raw is Map) {
+      final kw = (raw['keyword'] ?? raw['title'] ?? raw['name'] ?? '')
+          .toString()
+          .trim();
+      final slug = (raw['tag_slug'] ?? raw['slug'] ?? '').toString().trim();
+      return HotKeywordItem(keyword: kw, tagSlug: slug);
+    }
+    return HotKeywordItem(keyword: raw.toString().trim());
+  }
+}
+
 /// Country facet for the filter bottom sheet.
 class FacetCountry {
   final String code;

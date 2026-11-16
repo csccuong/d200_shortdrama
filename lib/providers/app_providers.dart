@@ -73,6 +73,20 @@ final shellTabIndexProvider = NotifierProvider<ShellTabNotifier, int>(
   ShellTabNotifier.new,
 );
 
+/// Active sub-tab inside WatchlistScreen: 0 = My List, 1 = History.
+class WatchlistTabNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void setTab(int index) {
+    state = index.clamp(0, 1);
+  }
+}
+
+final watchlistTabIndexProvider = NotifierProvider<WatchlistTabNotifier, int>(
+  WatchlistTabNotifier.new,
+);
+
 // ============================================================================
 // 1. LOCALE & SUBTITLE SETTINGS PROVIDER
 // ============================================================================

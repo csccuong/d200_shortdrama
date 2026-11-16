@@ -8,7 +8,9 @@ import '../../ads/const/ad_id_extension.dart';
 import '../../ads/const/ad_id_name.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/di/injection.dart';
+import '../../core/l10n/app_l10n.dart';
 import '../../core/router/app_route_observer.dart';
+import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../providers/app_providers.dart';
 import '../../screens/main_shell/main_shell_screen.dart';
@@ -206,12 +208,15 @@ class SplashController extends ChangeNotifier {
 
   void _showMaintenanceScreen(BuildContext context) {
     if (!context.mounted) return;
+    final lang = AppConstants.selectedLanguageCode;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('System Maintenance'),
-        content: Text(_maintenanceMessage ?? 'System maintenance in progress.'),
+        title: Text(AppStrings.tr(lang, 'maintenance_title')),
+        content: Text(
+          _maintenanceMessage ?? AppStrings.tr(lang, 'maintenance_default_desc'),
+        ),
         actions: const [], // No dismiss — user must wait
       ),
     );
@@ -219,27 +224,26 @@ class SplashController extends ChangeNotifier {
 
   void _showForceUpdateDialog(BuildContext context) {
     if (!context.mounted) return;
+    final lang = AppConstants.selectedLanguageCode;
     final storeUrl = _forceUpdateUrl ?? '';
+    final desc = AppStrings.tr(lang, 'update_required_desc');
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogCtx) => AlertDialog(
-        title: const Text('Update Required'),
-        content: Text(
-          storeUrl.isNotEmpty
-              ? 'A new version is available. Please update to continue:\n$storeUrl'
-              : 'A new version is available. Please update to continue.',
-        ),
+        title: Text(AppStrings.tr(lang, 'update_required_title')),
+        content: Text(storeUrl.isNotEmpty ? '$desc\n$storeUrl' : desc),
         actions: [
           if (storeUrl.isNotEmpty)
             TextButton(
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: storeUrl));
-                ScaffoldMessenger.of(dialogCtx).showSnackBar(
-                  const SnackBar(content: Text('Store link copied')),
+                AppToast.show(
+                  dialogCtx,
+                  AppStrings.tr(lang, 'store_link_copied'),
                 );
               },
-              child: const Text('Copy Store Link'),
+              child: Text(AppStrings.tr(lang, 'copy_store_link')),
             ),
         ],
       ),

@@ -6,6 +6,9 @@ import 'app_colors.dart';
 class AppTextStyles {
   AppTextStyles._();
 
+  static const String defaultFontFamily = 'BeVietnamPro';
+  static const String editorialSerifFontFamily = 'Spectral';
+
   // ===========================================================================
   // 1. HEADINGS & BRAND LOGO
   // ===========================================================================
@@ -52,7 +55,8 @@ class AppTextStyles {
   static TextStyle get heroSerifItalic => TextStyle(
         color: AppColors.textPrimary,
         fontSize: 21.sp,
-        fontFamily: 'Georgia',
+        fontFamily: editorialSerifFontFamily,
+        fontFamilyFallback: const [defaultFontFamily],
         fontStyle: FontStyle.italic,
         fontWeight: FontWeight.w500,
         height: 1.15,
@@ -408,7 +412,8 @@ class AppTextStyles {
   static TextStyle get rewardHeroUnlock => TextStyle(
         color: AppColors.textPrimary,
         fontSize: 27.sp,
-        fontFamily: 'Georgia',
+        fontFamily: editorialSerifFontFamily,
+        fontFamilyFallback: const [defaultFontFamily],
         fontStyle: FontStyle.italic,
         fontWeight: FontWeight.w700,
         height: 1.15,
@@ -417,7 +422,8 @@ class AppTextStyles {
   static TextStyle get rewardHeroHighlight => TextStyle(
         color: AppColors.rewardHeroRedTitle,
         fontSize: 27.sp,
-        fontFamily: 'Georgia',
+        fontFamily: editorialSerifFontFamily,
+        fontFamilyFallback: const [defaultFontFamily],
         fontStyle: FontStyle.italic,
         fontWeight: FontWeight.w700,
         height: 1.15,

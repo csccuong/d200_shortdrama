@@ -1,3 +1,4 @@
+import '../constants/app_constants.dart';
 import '../../models/drama_models.dart';
 import 'language_pack.dart';
 import 'locales/l10n_ar.dart';
@@ -61,11 +62,82 @@ class AppStrings {
     return _packsByCode[code] ?? enLanguagePack;
   }
 
+  static String genericError([String? langCode]) {
+    return tr(langCode ?? AppConstants.selectedLanguageCode, 'generic_error_toast');
+  }
+
+  static String normalizeLangCode(String code) => code.trim().toLowerCase();
+
+  static String baseLangCode(String code) {
+    final norm = normalizeLangCode(code);
+    if (norm.isEmpty) return '';
+    return norm.split(RegExp(r'[-_]')).first;
+  }
+
+  static const Map<String, LanguageOption> _extraSubtitleLanguageOptions = {
+    'id': LanguageOption(code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩'),
+    'ms': LanguageOption(code: 'ms', name: 'Bahasa Melayu', flag: '🇲🇾'),
+    'tr': LanguageOption(code: 'tr', name: 'Türkçe', flag: '🇹🇷'),
+    'zh': LanguageOption(code: 'zh', name: '中文', flag: '🇨🇳'),
+    'hi': LanguageOption(code: 'hi', name: 'हिन्दी', flag: '🇮🇳'),
+    'ru': LanguageOption(code: 'ru', name: 'Русский', flag: '🇷🇺'),
+    'it': LanguageOption(code: 'it', name: 'Italiano', flag: '🇮🇹'),
+  };
+
   static LanguageOption getLanguageOption(String code) {
-    return supportedLanguages.firstWhere(
-      (l) => l.code == code,
-      orElse: () => supportedLanguages.first,
+    final norm = normalizeLangCode(code);
+    final base = baseLangCode(code);
+    for (final l in supportedLanguages) {
+      if (l.code.toLowerCase() == norm) return l;
+    }
+    if (base.isNotEmpty) {
+      for (final l in supportedLanguages) {
+        if (l.code.toLowerCase() == base) return l;
+      }
+    }
+    final extra = _extraSubtitleLanguageOptions[norm] ??
+        _extraSubtitleLanguageOptions[base];
+    if (extra != null) return extra;
+    final resolved = norm.isNotEmpty ? norm : 'en';
+    if (resolved == 'en') {
+      return supportedLanguages.firstWhere((l) => l.code == 'en');
+    }
+    return LanguageOption(
+      code: resolved,
+      name: resolved.toUpperCase(),
+      flag: '🌐',
     );
+  }
+
+  /// Resolves the best subtitle item for [preferredLang], falling back to
+  /// English (`en`), then [isDefault], then the first item.
+  static T? resolveSubtitleCandidate<T>(
+    List<T> items,
+    String Function(T) codeOf,
+    String preferredLang, {
+    bool Function(T)? isDefault,
+  }) {
+    if (items.isEmpty) return null;
+
+    T? findByLang(String target) {
+      final norm = normalizeLangCode(target);
+      final base = baseLangCode(target);
+      if (norm.isEmpty) return null;
+      for (final item in items) {
+        if (normalizeLangCode(codeOf(item)) == norm) return item;
+      }
+      if (base.isNotEmpty) {
+        for (final item in items) {
+          if (baseLangCode(codeOf(item)) == base) return item;
+        }
+      }
+      return null;
+    }
+
+    return findByLang(preferredLang) ??
+        findByLang('en') ??
+        (isDefault != null ? items.where(isDefault).firstOrNull : null) ??
+        items.first;
   }
 
   static String tr(String langCode, String key) {

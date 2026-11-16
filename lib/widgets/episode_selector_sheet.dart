@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/utils/app_toast.dart';
+import '../core/utils/episode_unlock_helper.dart';
 import '../core/utils/screen_utils.dart';
 import '../models/drama_card.dart';
 import '../models/episode_detail.dart';
@@ -42,21 +44,11 @@ class _EpisodeSelectorSheetState extends ConsumerState<EpisodeSelectorSheet> {
     _selectedChunk = (safeEp - 1) ~/ _chunkSize;
   }
 
-  bool _isEpisodeUnlocked(int epNo, Map<int, EpisodeItem> byNum, bool isVip) {
-    if (isVip || widget.isVipUser || widget.fullDramaUnlocked) return true;
-    if (widget.locallyUnlockedEpisodes.contains(epNo)) return true;
-    final item = byNum[epNo];
-    if (item != null) {
-      return !item.isLocked && (item.isUnlocked || item.isFreeTier);
-    }
-    return epNo <= widget.drama.freeEpisodesCount;
-  }
-
   @override
   Widget build(BuildContext context) {
     final wallet = ref.watch(walletProvider);
     final legacyVip = ref.watch(userWalletProvider.select((s) => s.isVip));
-    final isVip = wallet.isVip || legacyVip;
+    final isVip = wallet.isVip || legacyVip || widget.isVipUser;
     final locale = ref.watch(localeProvider);
 
     final total = widget.drama.totalEpisodes > 0
@@ -72,9 +64,15 @@ class _EpisodeSelectorSheetState extends ConsumerState<EpisodeSelectorSheet> {
     final epsInChunk = List.generate(endEp - startEp + 1, (i) => startEp + i);
     final bottomInset = AppScreenUtils.bottomSafeInset(context);
 
-    final byNum = <int, EpisodeItem>{
-      for (final e in widget.episodes) e.episodeNumber: e,
-    };
+    final byNum = EpisodeUnlockHelper.indexByNumber(widget.episodes);
+    final firstLockedEp = EpisodeUnlockHelper.findFirstLockedEpisode(
+      totalEpisodes: total,
+      drama: widget.drama,
+      episodesByNumber: byNum,
+      isVip: isVip,
+      locallyUnlockedEpisodes: widget.locallyUnlockedEpisodes,
+      fullDramaUnlocked: widget.fullDramaUnlocked,
+    );
 
     final displayTags = widget.drama.tags.isNotEmpty
         ? widget.drama.tags.take(3).map((t) => t.name).toList()
@@ -214,10 +212,28 @@ class _EpisodeSelectorSheetState extends ConsumerState<EpisodeSelectorSheet> {
               itemBuilder: (context, index) {
                 final epNo = epsInChunk[index];
                 final isCurrent = epNo == widget.currentEpisode;
-                final isUnlocked = _isEpisodeUnlocked(epNo, byNum, isVip);
+                final isUnlocked = EpisodeUnlockHelper.isEpisodeUnlocked(
+                  episodeNo: epNo,
+                  drama: widget.drama,
+                  episodesByNumber: byNum,
+                  isVip: isVip,
+                  locallyUnlockedEpisodes: widget.locallyUnlockedEpisodes,
+                  fullDramaUnlocked: widget.fullDramaUnlocked,
+                );
+                final isOutOfOrder =
+                    !isUnlocked && firstLockedEp != null && epNo > firstLockedEp;
 
                 return InkWell(
                   onTap: () {
+                    if (isOutOfOrder) {
+                      AppToast.show(
+                        context,
+                        locale
+                            .tr('unlock_in_order_toast')
+                            .replaceAll('{ep}', '$firstLockedEp'),
+                      );
+                      return;
+                    }
                     Navigator.pop(context);
                     widget.onSelectEpisode(epNo);
                   },

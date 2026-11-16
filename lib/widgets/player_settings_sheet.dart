@@ -7,14 +7,20 @@ import '../services/app_strings.dart';
 
 class PlayerSettingsSheet extends ConsumerWidget {
   final List<String>? availableSubLangs;
+  final bool subtitlesOnly;
 
-  const PlayerSettingsSheet({super.key, this.availableSubLangs});
+  const PlayerSettingsSheet({
+    super.key,
+    this.availableSubLangs,
+    this.subtitlesOnly = false,
+  });
 
   static const List<double> _speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
   static void show(
     BuildContext context, {
     List<String>? availableSubLangs,
+    bool subtitlesOnly = false,
   }) {
     showModalBottomSheet<void>(
       context: context,
@@ -23,6 +29,7 @@ class PlayerSettingsSheet extends ConsumerWidget {
       useSafeArea: true,
       builder: (_) => PlayerSettingsSheet(
         availableSubLangs: availableSubLangs,
+        subtitlesOnly: subtitlesOnly,
       ),
     );
   }
@@ -41,28 +48,30 @@ class PlayerSettingsSheet extends ConsumerWidget {
     final wallet = ref.watch(userWalletProvider);
     final walletNotifier = ref.read(userWalletProvider.notifier);
     final bottomInset = AppScreenUtils.bottomSafeInset(context);
-    final rawSubLangs = availableSubLangs ?? const <String>[];
+    final rawSubLangs = availableSubLangs;
     final seenSubCodes = <String>{};
     final displaySubOptions = <LanguageOption>[];
-    for (final raw in rawSubLangs) {
-      final code = raw.trim().toLowerCase();
-      if (code.isEmpty || !seenSubCodes.add(code)) continue;
-      LanguageOption? matched;
-      for (final o in AppStrings.supportedLanguages) {
-        if (o.code.toLowerCase() == code) {
-          matched = o;
-          break;
-        }
+    if (rawSubLangs != null) {
+      for (final raw in rawSubLangs) {
+        final code = AppStrings.normalizeLangCode(raw);
+        if (code.isEmpty || code == 'off' || !seenSubCodes.add(code)) continue;
+        final opt = AppStrings.getLanguageOption(code);
+        displaySubOptions.add(
+          LanguageOption(
+            code: code,
+            name: opt.name,
+            flag: opt.flag,
+          ),
+        );
       }
-      displaySubOptions.add(
-        matched ??
-            LanguageOption(
-              code: code,
-              name: code.toUpperCase(),
-              flag: '🌐',
-            ),
-      );
+    } else {
+      displaySubOptions.addAll(AppStrings.supportedLanguages);
     }
+    final activeSubOption = AppStrings.resolveSubtitleCandidate<LanguageOption>(
+      displaySubOptions,
+      (o) => o.code,
+      locale.subtitleLanguage,
+    );
 
     return Material(
       color: AppColors.surfaceSheet,
@@ -88,14 +97,18 @@ class PlayerSettingsSheet extends ConsumerWidget {
             Row(
               children: [
                 Icon(
-                  Icons.tune_rounded,
+                  subtitlesOnly
+                      ? Icons.subtitles_rounded
+                      : Icons.tune_rounded,
                   color: AppColors.primary,
                   size: 21.sp,
                 ),
                 SizedBox(width: 8.w),
                 Expanded(
                   child: Text(
-                    locale.tr('player_settings'),
+                    subtitlesOnly
+                        ? locale.tr('subtitle_language')
+                        : locale.tr('player_settings'),
                     style: AppTextStyles.h3,
                   ),
                 ),
@@ -119,113 +132,137 @@ class PlayerSettingsSheet extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(14.r),
                 border: Border.all(color: AppColors.borderSubtle),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        locale.subtitlesEnabled
-                            ? Icons.subtitles_rounded
-                            : Icons.subtitles_off_outlined,
-                        color: AppColors.primary,
-                        size: 21.sp,
+              child: displaySubOptions.isEmpty
+                  ? Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6.h),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.subtitles_off_outlined,
+                            color: AppColors.textWhite60,
+                            size: 21.sp,
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Text(
+                              locale.tr('no_subtitles_available'),
+                              style: AppTextStyles.caption,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Text(
-                          locale.tr('show_subtitles'),
-                          style: AppTextStyles.profileMenuTitle,
-                        ),
-                      ),
-                      Switch.adaptive(
-                        value: locale.subtitlesEnabled,
-                        activeThumbColor: AppColors.primary,
-                        activeTrackColor:
-                            AppColors.primary.withValues(alpha: 0.35),
-                        onChanged: (val) {
-                          localeNotifier.toggleSubtitlesEnabled(val);
-                          unawaited(
-                            ref.read(accountProvider.notifier).updateSettings(
-                                  subtitleLanguage:
-                                      val ? locale.subtitleLanguage : 'off',
-                                ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  if (locale.subtitlesEnabled && displaySubOptions.isNotEmpty) ...[
-                    Divider(color: AppColors.divider, height: 14.h),
-                    Text(
-                      locale.tr('subtitle_language'),
-                      style: AppTextStyles.caption,
-                    ),
-                    SizedBox(height: 8.h),
-                    SizedBox(
-                      height: 34.h,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        physics: AppScreenUtils.adaptiveScrollPhysics,
-                        itemCount: displaySubOptions.length,
-                        separatorBuilder: (_, _) => SizedBox(width: 8.w),
-                        itemBuilder: (context, idx) {
-                          final opt = displaySubOptions[idx];
-                          final isSelected =
-                              opt.code == locale.subtitleLanguage;
-                          return GestureDetector(
-                            onTap: () {
-                              localeNotifier.setSubtitleLanguage(opt.code);
-                              unawaited(
-                                ref
-                                    .read(accountProvider.notifier)
-                                    .updateSettings(
-                                      subtitleLanguage: opt.code,
-                                    ),
-                              );
-                            },
-                            child: Container(
-                              padding: EdgeInsets.symmetric(horizontal: 11.w),
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: isSelected ? null : AppColors.glassFill,
-                                gradient: isSelected
-                                    ? AppColors.primaryGradient
-                                    : null,
-                                borderRadius: BorderRadius.circular(18.r),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppColors.transparent
-                                      : AppColors.divider,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(opt.flag, style: AppTextStyles.bodyMedium),
-                                  SizedBox(width: 5.w),
-                                  Text(
-                                    opt.name,
-                                    style: AppTextStyles.chipLabel(
-                                      isSelected: isSelected,
-                                    ),
-                                  ),
-                                ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              locale.subtitlesEnabled
+                                  ? Icons.subtitles_rounded
+                                  : Icons.subtitles_off_outlined,
+                              color: AppColors.primary,
+                              size: 21.sp,
+                            ),
+                            SizedBox(width: 12.w),
+                            Expanded(
+                              child: Text(
+                                locale.tr('show_subtitles'),
+                                style: AppTextStyles.profileMenuTitle,
                               ),
                             ),
-                          );
-                        },
-                      ),
+                            Switch.adaptive(
+                              value: locale.subtitlesEnabled,
+                              activeThumbColor: AppColors.primary,
+                              activeTrackColor:
+                                  AppColors.primary.withValues(alpha: 0.35),
+                              onChanged: (val) {
+                                localeNotifier.toggleSubtitlesEnabled(val);
+                                unawaited(
+                                  ref
+                                      .read(accountProvider.notifier)
+                                      .updateSettings(
+                                        subtitleLanguage:
+                                            val ? locale.subtitleLanguage : 'off',
+                                      ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        Divider(color: AppColors.divider, height: 14.h),
+                        Text(
+                          locale.tr('subtitle_language'),
+                          style: AppTextStyles.caption,
+                        ),
+                        SizedBox(height: 8.h),
+                        SizedBox(
+                          height: 34.h,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: AppScreenUtils.adaptiveScrollPhysics,
+                            itemCount: displaySubOptions.length,
+                            separatorBuilder: (_, _) => SizedBox(width: 8.w),
+                            itemBuilder: (context, idx) {
+                              final opt = displaySubOptions[idx];
+                              final isSelected = locale.subtitlesEnabled &&
+                                  opt.code == activeSubOption?.code;
+                              return GestureDetector(
+                                onTap: () {
+                                  localeNotifier.setSubtitleLanguage(opt.code);
+                                  unawaited(
+                                    ref
+                                        .read(accountProvider.notifier)
+                                        .updateSettings(
+                                          subtitleLanguage: opt.code,
+                                        ),
+                                  );
+                                },
+                                child: Container(
+                                  padding:
+                                      EdgeInsets.symmetric(horizontal: 11.w),
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isSelected ? null : AppColors.glassFill,
+                                    gradient: isSelected
+                                        ? AppColors.primaryGradient
+                                        : null,
+                                    borderRadius: BorderRadius.circular(18.r),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? AppColors.transparent
+                                          : AppColors.divider,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(opt.flag,
+                                          style: AppTextStyles.bodyMedium),
+                                      SizedBox(width: 5.w),
+                                      Text(
+                                        opt.name,
+                                        style: AppTextStyles.chipLabel(
+                                          isSelected: isSelected,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                      ],
                     ),
-                    SizedBox(height: 4.h),
-                  ],
-                ],
-              ),
             ),
 
-            SizedBox(height: 12.h),
+            if (!subtitlesOnly) ...[
+              SizedBox(height: 12.h),
 
-            // 2. Auto-Play Next Episode Toggle
+              // 2. Auto-Play Next Episode Toggle
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
               decoration: BoxDecoration(
@@ -334,6 +371,7 @@ class PlayerSettingsSheet extends ConsumerWidget {
                 ],
               ),
             ),
+            ],
           ],
         ),
       ),

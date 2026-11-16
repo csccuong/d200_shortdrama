@@ -7,6 +7,7 @@ import '../../models/drama_card.dart';
 import '../../models/home_response.dart';
 import '../../models/taxonomy_models.dart';
 import '../../providers/app_providers.dart';
+import '../../services/api/home_api_service.dart';
 import '../../widgets/drama_network_image.dart';
 import '../player/drama_player_screen.dart';
 
@@ -41,7 +42,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // Dedicated state for Search & Hot keywords
   List<DramaCard> _searchResults = [];
-  List<String> _hotKeywords = [];
+  List<HotKeywordItem> _hotKeywords = [];
+  String _hotKeywordsLang = '';
+  String? _activeHotTagSlug;
   bool _isSearching = false;
   String? _searchError;
 
@@ -50,7 +53,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _searchFocus.addListener(() {
-      if (_searchFocus.hasFocus && _hotKeywords.isEmpty) {
+      final lang = ref.read(localeProvider).appLanguage;
+      if (_searchFocus.hasFocus &&
+          (_hotKeywords.isEmpty || _hotKeywordsLang != lang)) {
         unawaited(_loadHotKeywords());
       }
       if (mounted) setState(() {});
@@ -104,18 +109,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final sessionReady =
         ref.read(sessionProvider).asData?.value.isInitialized ?? false;
     if (!sessionReady) return;
+    final lang = ref.read(localeProvider).appLanguage;
     try {
-      final data = await ref
-          .read(homeApiServiceProvider)
-          .searchHot(lang: ref.read(localeProvider).appLanguage);
-      final rawKeywords = data['hot_keywords'] ?? data['keywords'];
-      if (rawKeywords is List && mounted) {
+      final data =
+          await ref.read(homeApiServiceProvider).searchHot(lang: lang);
+      final parsed = HomeApiService.parseHotKeywords(data, limit: 10);
+      if (mounted) {
         setState(() {
-          _hotKeywords = rawKeywords
-              .map((e) => e is Map ? (e['keyword'] ?? e['title'] ?? '').toString() : e.toString())
-              .where((s) => s.trim().isNotEmpty)
-              .take(10)
-              .toList();
+          _hotKeywords = parsed;
+          _hotKeywordsLang = lang;
         });
       }
     } catch (_) {
@@ -124,7 +126,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onSearchChanged(String val) {
-    setState(() => _searchQuery = val);
+    setState(() {
+      _searchQuery = val;
+      _activeHotTagSlug = null;
+    });
     _searchDebounce?.cancel();
     final trimmed = val.trim();
     if (trimmed.isEmpty) {
@@ -141,8 +146,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  Future<void> _executeSearch(String query) async {
+  void _selectHotKeyword(HotKeywordItem item) {
+    _searchDebounce?.cancel();
+    final slug = item.tagSlug.trim();
+    _searchCtrl.value = TextEditingValue(
+      text: item.keyword,
+      selection: TextSelection.collapsed(offset: item.keyword.length),
+    );
+    setState(() {
+      _searchQuery = item.keyword;
+      _activeHotTagSlug = slug.isNotEmpty ? slug : null;
+    });
+    unawaited(_executeSearch(item.keyword, apiQuery: item.searchQuery));
+  }
+
+  Future<void> _executeSearch(String displayQuery, {String? apiQuery}) async {
     if (!mounted) return;
+    final effectiveQuery = (apiQuery ?? displayQuery).trim();
+    if (effectiveQuery.isEmpty) return;
+
     setState(() {
       _isSearching = true;
       _searchError = null;
@@ -150,24 +172,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final lang = ref.read(localeProvider).appLanguage;
       final res = await ref.read(homeApiServiceProvider).search(
-            query: query,
+            query: effectiveQuery,
             lang: lang,
           );
-      if (!mounted || _searchQuery.trim() != query) return;
+      if (!mounted || _searchQuery.trim() != displayQuery) return;
       ref.read(eventTrackerProvider).track(
         'search',
         sourceScreen: 'home',
-        props: {'query': query, 'results': res.items.length},
+        props: {
+          'query': effectiveQuery,
+          'display_query': displayQuery,
+          'results': res.items.length,
+        },
       );
       setState(() {
         _searchResults = res.items;
         _isSearching = false;
       });
     } catch (e) {
+      debugPrint('HomeScreen._executeSearch error: $e');
       if (!mounted) return;
       setState(() {
         _isSearching = false;
-        _searchError = e.toString();
+        _searchError = ref.read(localeProvider).tr('generic_error_toast');
       });
     }
   }
@@ -248,7 +275,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await _loadCategoryDramas(reset: true);
     }
     if (_searchQuery.trim().isNotEmpty) {
-      await _executeSearch(_searchQuery.trim());
+      await _executeSearch(
+        _searchQuery.trim(),
+        apiQuery: _activeHotTagSlug,
+      );
     }
   }
 
@@ -303,6 +333,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.listen<LocaleState>(localeProvider, (prev, next) {
       if (prev?.appLanguage != next.appLanguage &&
           sessionAsync.isReady) {
+        _hotKeywordsLang = '';
+        if (_searchFocus.hasFocus || _hotKeywords.isNotEmpty) {
+          unawaited(_loadHotKeywords());
+        }
         unawaited(ref.read(homeProvider.notifier).fetchHome(next.appLanguage));
         if (_selectedCategory != 'all') {
           unawaited(_loadCategoryDramas(reset: true));
@@ -404,7 +438,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             onSubmitted: (v) {
                               if (v.trim().isNotEmpty) {
                                 _searchDebounce?.cancel();
-                                unawaited(_executeSearch(v.trim()));
+                                unawaited(
+                                  _executeSearch(
+                                    v.trim(),
+                                    apiQuery: _activeHotTagSlug,
+                                  ),
+                                );
                               }
                             },
                             style: AppTextStyles.bodyMedium,
@@ -425,6 +464,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                         _searchCtrl.clear();
                                         setState(() {
                                           _searchQuery = '';
+                                          _activeHotTagSlug = null;
                                           _searchResults = [];
                                           _isSearching = false;
                                           _searchError = null;
@@ -458,12 +498,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Wrap(
                       spacing: 8.w,
                       runSpacing: 6.h,
-                      children: _hotKeywords.map((kw) {
+                      children: _hotKeywords.map((item) {
                         return GestureDetector(
-                          onTap: () {
-                            _searchCtrl.text = kw;
-                            _onSearchChanged(kw);
-                          },
+                          onTap: () => _selectHotKeyword(item),
                           child: Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 10.w,
@@ -475,7 +512,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               border: Border.all(color: AppColors.borderSubtle),
                             ),
                             child: Text(
-                              kw,
+                              item.keyword,
                               style: AppTextStyles.caption,
                             ),
                           ),
@@ -622,9 +659,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: _SectionHeader(
                               title: locale.tr('continue_watching'),
                               seeAllLabel: locale.tr('see_all'),
-                              onSeeAll: () => ref
-                                  .read(shellTabIndexProvider.notifier)
-                                  .setTab(2),
+                              onSeeAll: () {
+                                ref
+                                    .read(watchlistTabIndexProvider.notifier)
+                                    .setTab(1);
+                                ref
+                                    .read(shellTabIndexProvider.notifier)
+                                    .setTab(2);
+                              },
                             ),
                           ),
                           SizedBox(height: 10.h),
@@ -767,8 +809,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: _InlineRetryBox(
                       message: _searchError!,
                       retryLabel: locale.tr('retry_btn'),
-                      onRetry: () =>
-                          unawaited(_executeSearch(_searchQuery.trim())),
+                      onRetry: () => unawaited(
+                        _executeSearch(
+                          _searchQuery.trim(),
+                          apiQuery: _activeHotTagSlug,
+                        ),
+                      ),
                     ),
                   )
                 else if (_categoryError != null &&

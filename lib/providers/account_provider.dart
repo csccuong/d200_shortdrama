@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_constants.dart';
 import '../core/di/injection.dart';
+import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../models/iap_models.dart';
 import '../models/user_profile.dart';
@@ -76,7 +77,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.fetchProfile error: $e');
       state = state.copyWith(
         isLoadingProfile: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return null;
     }
@@ -106,7 +107,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.updateProfile error: $e');
       state = state.copyWith(
         isLoadingProfile: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -195,7 +196,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.register error: $e');
       state = state.copyWith(
         isAuthenticating: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -214,7 +215,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.login error: $e');
       state = state.copyWith(
         isAuthenticating: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -242,7 +243,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.socialLogin error: $e');
       state = state.copyWith(
         isAuthenticating: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -266,7 +267,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.logout error: $e');
       state = state.copyWith(
         isAuthenticating: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -307,7 +308,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.verifyIap error: $e');
       state = state.copyWith(
         isPurchasing: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }
@@ -328,7 +329,7 @@ class AccountNotifier extends Notifier<AccountState> {
       debugPrint('AccountNotifier.deleteAccount error: $e');
       state = state.copyWith(
         isAuthenticating: false,
-        errorMessage: e.toString(),
+        errorMessage: AppStrings.genericError(),
       );
       return false;
     }

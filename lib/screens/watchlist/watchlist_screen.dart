@@ -17,7 +17,7 @@ class WatchlistScreen extends ConsumerStatefulWidget {
 }
 
 class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
-  final PageController _pageController = PageController();
+  late final PageController _pageController;
   final ScrollController _favScrollCtrl = ScrollController();
   final ScrollController _historyScrollCtrl = ScrollController();
   int _selectedTab = 0; // 0: My List (Favorites) | 1: History
@@ -26,6 +26,8 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedTab = ref.read(watchlistTabIndexProvider);
+    _pageController = PageController(initialPage: _selectedTab);
     _favScrollCtrl.addListener(_onFavScroll);
     _historyScrollCtrl.addListener(_onHistoryScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -84,13 +86,16 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
   }
 
   void _selectTab(int index) {
+    ref.read(watchlistTabIndexProvider.notifier).setTab(index);
     if (_selectedTab == index) return;
     setState(() => _selectedTab = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-    );
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   void _openDrama(DramaCard drama, {int? episodeNo, int? positionSec}) {
@@ -121,6 +126,19 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
     final mylist = ref.watch(mylistProvider);
     final locale = ref.watch(localeProvider);
     final lang = locale.appLanguage;
+
+    ref.listen<int>(watchlistTabIndexProvider, (prev, next) {
+      if (next != _selectedTab) {
+        setState(() => _selectedTab = next);
+        if (_pageController.hasClients) {
+          _pageController.animateToPage(
+            next,
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      }
+    });
 
     ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
       if (!(prev?.isReady ?? false) && next.isReady) {
@@ -163,6 +181,7 @@ class _WatchlistScreenState extends ConsumerState<WatchlistScreen> {
                 controller: _pageController,
                 physics: AppScreenUtils.adaptiveScrollPhysics,
                 onPageChanged: (idx) {
+                  ref.read(watchlistTabIndexProvider.notifier).setTab(idx);
                   if (_selectedTab != idx) {
                     setState(() => _selectedTab = idx);
                   }

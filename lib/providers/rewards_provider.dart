@@ -62,10 +62,10 @@ class RewardsNotifier extends AsyncNotifier<RewardsState> {
   }
 
   /// Performs daily check-in. Pass adBonus=true if user watched an ad
-  /// for bonus coins.
-  Future<void> checkIn({bool adBonus = false}) async {
+  /// for bonus coins. Returns true if the check-in succeeded.
+  Future<bool> checkIn({bool adBonus = false}) async {
     final current = state.value;
-    if (current == null || current.isCheckingIn) return;
+    if (current == null || current.isCheckingIn) return false;
 
     state = AsyncValue.data(current.copyWith(isCheckingIn: true));
     try {
@@ -84,16 +84,18 @@ class RewardsNotifier extends AsyncNotifier<RewardsState> {
         overview: overview,
         isCheckingIn: false,
       ));
+      return true;
     } catch (e) {
       debugPrint('RewardsNotifier.checkIn error: $e');
       state = AsyncValue.data(current.copyWith(isCheckingIn: false));
+      return false;
     }
   }
 
-  /// Claims a completed task reward.
-  Future<void> claimTask(String taskCode) async {
+  /// Claims a completed task reward. Returns true if the claim succeeded.
+  Future<bool> claimTask(String taskCode) async {
     final current = state.value;
-    if (current == null || current.isClaimingTask) return;
+    if (current == null || current.isClaimingTask) return false;
 
     state = AsyncValue.data(current.copyWith(isClaimingTask: true));
     try {
@@ -112,9 +114,11 @@ class RewardsNotifier extends AsyncNotifier<RewardsState> {
         overview: overview,
         isClaimingTask: false,
       ));
+      return true;
     } catch (e) {
       debugPrint('RewardsNotifier.claimTask error: $e');
       state = AsyncValue.data(current.copyWith(isClaimingTask: false));
+      return false;
     }
   }
 }

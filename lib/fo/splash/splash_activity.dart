@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:easy_ads_flutter/easy_ads_flutter.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +30,7 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
   final SplashController _controller = SplashController();
   late final AnimationController _wallDriftController;
   late final AnimationController _shimmerController;
+  late final AnimationController _entranceController;
 
   @override
   void initState() {
@@ -44,13 +44,19 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
       vsync: this,
       duration: const Duration(milliseconds: 2600),
     );
+    _entranceController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    );
 
     if (AppConstants.isFlutterTest) {
       _wallDriftController.value = 0.28;
       _shimmerController.value = 0.45;
+      _entranceController.value = 1.0;
     } else {
       _wallDriftController.repeat();
       _shimmerController.repeat();
+      _entranceController.forward();
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -68,6 +74,7 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
   void dispose() {
     _wallDriftController.dispose();
     _shimmerController.dispose();
+    _entranceController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -80,6 +87,10 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
         FirebaseRemoteConfigService.getBoolConfigByKey(
           FirebaseRemoteConfigService.banner_splash,
         );
+    final entranceFade = CurvedAnimation(
+      parent: _entranceController,
+      curve: Curves.easeOutCubic,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -98,7 +109,7 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
             pulseAnimation: _shimmerController,
           ),
 
-          // 3. Foreground Glassmorphism Shimmer Emblem, Tagline, Spark Progress & Ad
+          // 3. Foreground App Icon Emblem, Brand Title, Tagline, Spark Progress & Ad
           SafeArea(
             child: ListenableBuilder(
               listenable: _controller,
@@ -107,36 +118,52 @@ class _SplashActivityState extends ConsumerState<SplashActivity>
                   children: [
                     const Spacer(flex: 5),
 
-                    // Frosted-glass squircle emblem with diagonal shimmer & 3D Ruby Play icon
-                    RepaintBoundary(
-                      child: _GlassShimmerBrandEmblem(
-                        shimmerAnimation: _shimmerController,
-                      ),
-                    ),
-                    SizedBox(height: 20.h.clamp(12.0, 24.0)),
+                    FadeTransition(
+                      opacity: entranceFade,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.08),
+                          end: Offset.zero,
+                        ).animate(entranceFade),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Glowing squircle app_icon.png with pulse halo & shimmer sweep
+                            RepaintBoundary(
+                              child: _GlassShimmerBrandEmblem(
+                                shimmerAnimation: _shimmerController,
+                              ),
+                            ),
+                            SizedBox(height: 22.h.clamp(14.0, 26.0)),
 
-                    // Brand Title
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 24.w),
-                      child: Text(
-                        'DXX ShortDrama',
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.splashAppTitle,
-                      ),
-                    ),
-                    SizedBox(height: 7.h.clamp(4.0, 10.0)),
+                            // Brand Title
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 24.w),
+                              child: Text(
+                                'Dramota',
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.splashAppTitle.copyWith(
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 8.h.clamp(4.0, 10.0)),
 
-                    // Localized Tagline
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 28.w),
-                      child: Text(
-                        locale.tr('splash_tagline'),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.splashTagline,
+                            // Localized Tagline
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 32.w),
+                              child: Text(
+                                locale.tr('splash_tagline'),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.splashTagline,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
@@ -189,10 +216,30 @@ class _TiltedDriftingPosterWall extends StatelessWidget {
   });
 
   static const List<List<String>> _posterColumns = [
-    ['', '', '', ''],
-    ['', '', '', ''],
-    ['', '', '', ''],
-    ['', '', '', ''],
+    [
+      'assets/images/onboard1.webp',
+      'assets/images/onboard4.webp',
+      'assets/images/onboard2.webp',
+      'assets/images/onboard3.webp',
+    ],
+    [
+      'assets/images/onboard3.webp',
+      'assets/images/onboard2.webp',
+      'assets/images/rewards_hero_banner.jpg',
+      'assets/images/onboard1.webp',
+    ],
+    [
+      'assets/images/onboard2.webp',
+      'assets/images/onboard1.webp',
+      'assets/images/onboard4.webp',
+      'assets/images/rewards_hero_banner.jpg',
+    ],
+    [
+      'assets/images/onboard4.webp',
+      'assets/images/rewards_hero_banner.jpg',
+      'assets/images/onboard3.webp',
+      'assets/images/onboard2.webp',
+    ],
   ];
 
   static const List<double> _phaseOffsets = [0.0, 0.37, 0.18, 0.61];
@@ -309,25 +356,30 @@ class _PosterWallTile extends StatelessWidget {
         gradient: AppColors.splashPosterFallbackGradient,
       ),
       clipBehavior: Clip.antiAlias,
-      child: assetPath.isEmpty
-          ? const DecoratedBox(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            assetPath,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            cacheWidth: 260,
+            filterQuality: FilterQuality.low,
+            errorBuilder: (_, _, _) => const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: AppColors.splashPosterFallbackGradient,
               ),
-            )
-          : Image.asset(
-              assetPath,
-              width: width,
-              height: height,
-              fit: BoxFit.cover,
-              cacheWidth: 260,
-              filterQuality: FilterQuality.low,
-              errorBuilder: (_, _, _) => const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.splashPosterFallbackGradient,
-                ),
-              ),
             ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: AppColors.background.withValues(alpha: 0.36),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -382,8 +434,8 @@ class _CinemaSpotlightVignette extends StatelessWidget {
   }
 }
 
-/// Frosted-glass squircle logo with diagonal sheen, animated shimmer sweep,
-/// and 3D Ruby Play Triangle (or `assets/images/splash_thumb.png` if provided).
+/// Glowing squircle brand emblem displaying `assets/images/app_icon.png`
+/// with breathing crimson halo rings, gentle scale pulse, and diagonal shimmer sweep.
 class _GlassShimmerBrandEmblem extends StatelessWidget {
   final Animation<double> shimmerAnimation;
 
@@ -393,228 +445,133 @@ class _GlassShimmerBrandEmblem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final boxSize = 114.r.clamp(84.0, 124.0);
-    final cornerRadius = 28.r.clamp(21.0, 31.0);
+    final boxSize = 114.r.clamp(90.0, 126.0);
+    final cornerRadius = 28.r.clamp(22.0, 32.0);
     final borderRadius = BorderRadius.circular(cornerRadius);
-    final playSize = boxSize * 0.54;
 
-    return Container(
-      width: boxSize,
-      height: boxSize,
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.splashCrimsonGlowShadow,
-            blurRadius: 34,
-            spreadRadius: 2,
-            offset: Offset(6, 10),
-          ),
-          BoxShadow(
-            color: AppColors.splashGlassDropShadow,
-            blurRadius: 24,
-            offset: Offset(0, 12),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Base dark frosted glass + subtle surface gradient
-              const ColoredBox(color: AppColors.splashGlassBase),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.splashGlassSurfaceGradient,
-                ),
-              ),
-
-              // Signature Concept 1 diagonal upper-left glass reflection facet
-              const CustomPaint(
-                painter: _GlassSquircleDiagonalFacetPainter(),
-              ),
-
-              // Center brand artwork (`splash_thumb.png` if present, else 3D Ruby Play icon)
-              Center(
-                child: Image.asset(
-                  'assets/images/splash_thumb.png',
-                  width: boxSize * 0.72,
-                  height: boxSize * 0.72,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => SizedBox(
-                    width: playSize,
-                    height: playSize,
-                    child: const CustomPaint(
-                      painter: _RubyPlayTrianglePainter(),
+    return SizedBox(
+      width: boxSize * 1.38,
+      height: boxSize * 1.38,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer & inner breathing crimson halo rings
+          AnimatedBuilder(
+            animation: shimmerAnimation,
+            builder: (context, _) {
+              final wave = (math.sin(shimmerAnimation.value * 2 * math.pi) + 1) * 0.5;
+              return Stack(
+                alignment: Alignment.center,
+                children: [
+                  Transform.scale(
+                    scale: 1.0 + 0.08 * wave,
+                    child: Container(
+                      width: boxSize * 1.32,
+                      height: boxSize * 1.32,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(cornerRadius * 1.32),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.14 + 0.12 * wave),
+                          width: 1.0,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-
-              // Animated diagonal light shimmer sweep
-              AnimatedBuilder(
-                animation: shimmerAnimation,
-                builder: (context, child) {
-                  // Sweep across [-1.35 * boxSize, +1.35 * boxSize]
-                  final dx = (shimmerAnimation.value * 2.7 - 1.35) * boxSize;
-                  return Transform.translate(
-                    offset: Offset(dx, 0),
-                    child: child,
-                  );
-                },
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: AppColors.splashShimmerBandGradient,
+                  Transform.scale(
+                    scale: 1.0 + 0.04 * (1 - wave),
+                    child: Container(
+                      width: boxSize * 1.15,
+                      height: boxSize * 1.15,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(cornerRadius * 1.15),
+                        border: Border.all(
+                          color: AppColors.splashRubyMid.withValues(alpha: 0.25 + 0.18 * (1 - wave)),
+                          width: 1.2,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-
-              // Crisp glass specular rim border
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: borderRadius,
-                  border: Border.all(
-                    color: AppColors.splashGlassRim,
-                    width: 1.25,
-                  ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
-        ),
+
+          // Main squircle app_icon.png with breathing scale + diagonal light shimmer
+          AnimatedBuilder(
+            animation: shimmerAnimation,
+            builder: (context, child) {
+              final pulse = math.sin(shimmerAnimation.value * 2 * math.pi);
+              final scale = 1.0 + 0.022 * pulse;
+              return Transform.scale(scale: scale, child: child);
+            },
+            child: Container(
+              width: boxSize,
+              height: boxSize,
+              decoration: BoxDecoration(
+                borderRadius: borderRadius,
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.splashCrimsonGlowShadow,
+                    blurRadius: 38,
+                    spreadRadius: 3,
+                    offset: Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: AppColors.splashGlassDropShadow,
+                    blurRadius: 24,
+                    offset: Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: borderRadius,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.asset(
+                      'assets/images/app_icon.png',
+                      width: boxSize,
+                      height: boxSize,
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
+                    ),
+
+                    // Animated diagonal light shimmer sweep across app_icon.png
+                    AnimatedBuilder(
+                      animation: shimmerAnimation,
+                      builder: (context, child) {
+                        final dx = (shimmerAnimation.value * 2.8 - 1.4) * boxSize;
+                        return Transform.translate(
+                          offset: Offset(dx, 0),
+                          child: child,
+                        );
+                      },
+                      child: const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.splashShimmerBandGradient,
+                        ),
+                      ),
+                    ),
+
+                    // Crisp specular rim border
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: borderRadius,
+                        border: Border.all(
+                          color: AppColors.splashGlassRim,
+                          width: 1.25,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
-
-class _GlassSquircleDiagonalFacetPainter extends CustomPainter {
-  const _GlassSquircleDiagonalFacetPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final facetPath = Path()
-      ..moveTo(0, 0)
-      ..lineTo(size.width * 0.74, 0)
-      ..lineTo(size.width * 0.24, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    final paint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset.zero,
-        Offset(size.width * 0.62, size.height * 0.78),
-        const [
-          AppColors.splashGlassInnerSheenFill,
-          AppColors.transparent,
-        ],
-      );
-
-    canvas.drawPath(facetPath, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GlassSquircleDiagonalFacetPainter oldDelegate) =>
-      false;
-}
-
-class _RubyPlayTrianglePainter extends CustomPainter {
-  const _RubyPlayTrianglePainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final h = size.height;
-
-    final vertices = <Offset>[
-      Offset(w * 0.22, h * 0.12),
-      Offset(w * 0.22, h * 0.88),
-      Offset(w * 0.88, h * 0.50),
-    ];
-
-    final trianglePath = _buildRoundedPolygonPath(vertices, radius: w * 0.115);
-
-    // 1. Soft neon ruby glow behind the play emblem
-    final glowPaint = Paint()
-      ..color = AppColors.splashRubyTriangleGlow
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 11);
-    canvas.drawPath(trianglePath, glowPaint);
-
-    // 2. 3D ruby-coral-crimson gradient body
-    final bodyPaint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(w * 0.20, h * 0.14),
-        Offset(w * 0.84, h * 0.84),
-        const [
-          AppColors.splashRubyCoralTop,
-          AppColors.splashRubyMid,
-          AppColors.splashRubyDeep,
-        ],
-        const [0.0, 0.48, 1.0],
-      );
-    canvas.drawPath(trianglePath, bodyPaint);
-
-    // 3. Upper-left crystal facet reflection inside the play triangle
-    canvas.save();
-    canvas.clipPath(trianglePath);
-    final crystalFacet = Path()
-      ..moveTo(0, 0)
-      ..lineTo(w * 0.66, 0)
-      ..lineTo(w * 0.26, h)
-      ..lineTo(0, h)
-      ..close();
-    final facetPaint = Paint()
-      ..shader = ui.Gradient.linear(
-        Offset(w * 0.18, h * 0.12),
-        Offset(w * 0.58, h * 0.64),
-        const [
-          AppColors.splashRubyUpperFacet,
-          AppColors.transparent,
-        ],
-      );
-    canvas.drawPath(crystalFacet, facetPaint);
-    canvas.restore();
-
-    // 4. Specular rim highlight
-    final rimPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = AppColors.splashRubyRimLight;
-    canvas.drawPath(trianglePath, rimPaint);
-  }
-
-  Path _buildRoundedPolygonPath(List<Offset> points, {required double radius}) {
-    final path = Path();
-    final count = points.length;
-    for (var i = 0; i < count; i++) {
-      final prev = points[(i - 1 + count) % count];
-      final curr = points[i];
-      final next = points[(i + 1) % count];
-
-      final toPrev = prev - curr;
-      final toNext = next - curr;
-      final dPrev = toPrev.distance;
-      final dNext = toNext.distance;
-      final r = math.min(radius, math.min(dPrev, dNext) * 0.42);
-
-      final start = curr + (toPrev / dPrev) * r;
-      final end = curr + (toNext / dNext) * r;
-
-      if (i == 0) {
-        path.moveTo(start.dx, start.dy);
-      } else {
-        path.lineTo(start.dx, start.dy);
-      }
-      path.quadraticBezierTo(curr.dx, curr.dy, end.dx, end.dy);
-    }
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldRepaint(covariant _RubyPlayTrianglePainter oldDelegate) => false;
 }
 
 /// Sleek horizontal crimson progress bar with a glowing white-ruby spark orb tip.

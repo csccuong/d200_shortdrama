@@ -3,6 +3,7 @@ import 'package:dxx_shortdrama/core/network/api_endpoints.dart';
 import 'package:dxx_shortdrama/models/drama_card.dart';
 import 'package:dxx_shortdrama/models/home_response.dart';
 import 'package:dxx_shortdrama/models/pagination.dart';
+import 'package:dxx_shortdrama/models/taxonomy_models.dart';
 
 /// Group B: Home, browse, filter & search APIs (10 endpoints).
 class HomeApiService {
@@ -193,6 +194,20 @@ class HomeApiService {
     return resp.data['data'] as Map<String, dynamic>;
   }
 
+  /// Parses `/v1/search/hot` keywords while keeping canonical `tag_slug`.
+  static List<HotKeywordItem> parseHotKeywords(
+    Map<String, dynamic> data, {
+    int limit = 10,
+  }) {
+    final rawKeywords = data['hot_keywords'] ?? data['keywords'];
+    if (rawKeywords is! List) return const [];
+    return rawKeywords
+        .map(HotKeywordItem.fromDynamic)
+        .where((item) => item.keyword.isNotEmpty)
+        .take(limit)
+        .toList();
+  }
+
   /// B9. GET /v1/categories — full category list with optional tags & facets.
   Future<Map<String, dynamic>> fetchCategories({String lang = 'en'}) async {
     final resp = await _dio.get(
@@ -205,11 +220,13 @@ class HomeApiService {
   /// B10. GET /v1/languages — supported UI & subtitle languages.
   Future<List<Map<String, dynamic>>> fetchLanguages() async {
     final resp = await _dio.get(ApiEndpoints.languages);
-    final data = resp.data['data'] as Map<String, dynamic>;
-    return (data['languages'] as List<dynamic>?)
-            ?.map((e) => e as Map<String, dynamic>)
-            .toList() ??
-        [];
+    final raw = resp.data['data'];
+    final List<dynamic>? items = raw is List<dynamic>
+        ? raw
+        : (raw is Map<String, dynamic>
+            ? raw['languages'] as List<dynamic>?
+            : null);
+    return items?.whereType<Map<String, dynamic>>().toList() ?? [];
   }
 
   /// B11. GET /v1/dramas/ranking — top drama leaderboard (v4.5).

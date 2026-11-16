@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
+import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
 import '../../models/iap_models.dart';
@@ -161,20 +162,12 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
         sourceScreen: 'rewards',
         props: {'product_id': productId},
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${locale.tr('activated_vip_toast')}: $title ($priceLabel)',
-          ),
-        ),
+      AppToast.show(
+        context,
+        '${locale.tr('activated_vip_toast')}: $title ($priceLabel)',
       );
     } else {
-      final err = ref.read(accountProvider).errorMessage;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(err ?? 'Purchase verification pending'),
-        ),
-      );
+      AppToast.show(context, locale.tr('generic_error_toast'));
     }
   }
 
@@ -183,20 +176,16 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
       final earned = await showRewardUnlock(context, ref);
       if (!mounted) return;
       if (!earned) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(ref.read(localeProvider).tr('reward_ad_failed')),
-          ),
-        );
+        AppToast.show(context, ref.read(localeProvider).tr('reward_ad_failed'));
         return;
       }
     }
-    await ref.read(rewardsProvider.notifier).checkIn(adBonus: adBonus);
+    final ok = await ref.read(rewardsProvider.notifier).checkIn(adBonus: adBonus);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ref.read(localeProvider).tr('claimed_toast')),
-      ),
+    final locale = ref.read(localeProvider);
+    AppToast.show(
+      context,
+      locale.tr(ok ? 'claimed_toast' : 'generic_error_toast'),
     );
   }
 
@@ -208,19 +197,18 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
       final earned = await showRewardUnlock(context, ref);
       if (!mounted) return;
       if (!earned) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(locale.tr('reward_ad_failed'))),
-        );
+        AppToast.show(context, locale.tr('reward_ad_failed'));
         return;
       }
     } else if (!task.canClaim) {
       return;
     }
 
-    await ref.read(rewardsProvider.notifier).claimTask(task.taskCode);
+    final ok = await ref.read(rewardsProvider.notifier).claimTask(task.taskCode);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(locale.tr('claimed_toast'))),
+    AppToast.show(
+      context,
+      locale.tr(ok ? 'claimed_toast' : 'generic_error_toast'),
     );
   }
 
@@ -587,6 +575,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                         final cp = coinPacks[idx];
                         return _CoinPackageTile(
                           pack: cp,
+                          locale: locale,
                           onTap: () => unawaited(
                             _verifyPurchase(
                               productId: cp.productId,
@@ -732,9 +721,14 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
 
 class _CoinPackageTile extends StatelessWidget {
   final CoinPackage pack;
+  final LocaleState locale;
   final VoidCallback onTap;
 
-  const _CoinPackageTile({required this.pack, required this.onTap});
+  const _CoinPackageTile({
+    required this.pack,
+    required this.locale,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -768,7 +762,7 @@ class _CoinPackageTile extends StatelessWidget {
             if (pack.bonusCoins > 0) ...[
               SizedBox(height: 2.h),
               Text(
-                '+${pack.bonusCoins} Bonus',
+                '+${pack.bonusCoins} ${locale.tr('bonus')}',
                 style: AppTextStyles.captionSmall.copyWith(
                   color: AppColors.primaryBright,
                 ),

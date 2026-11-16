@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../fo/language/language_activity.dart';
 import '../../providers/app_providers.dart';
@@ -20,120 +26,71 @@ class ProfileScreen extends ConsumerWidget {
 
   void _copyGuestId(BuildContext context, LocaleState locale, String guestId) {
     Clipboard.setData(ClipboardData(text: guestId));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${locale.tr('id_copied_toast')}: $guestId'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    AppToast.show(context, '${locale.tr('id_copied_toast')}: $guestId');
   }
 
-  void _showRateAppDialog(BuildContext context, LocaleState locale) {
-    int selectedStars = 5;
-    showDialog<void>(
-      context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            return Dialog(
-              backgroundColor: AppColors.surfaceSheet,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18.r),
-                side: const BorderSide(color: AppColors.borderLight),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(20.w),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Image.asset(
-                              _icRateApp,
-                              width: 22.w,
-                              height: 22.w,
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.high,
-                            ),
-                            SizedBox(width: 8.w),
-                            Text(
-                              locale.tr('menu_rate_app'),
-                              style: AppTextStyles.h3,
-                            ),
-                          ],
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.pop(dialogCtx),
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: AppColors.textMuted,
-                            size: 20.sp,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 12.h),
-                    Text(
-                      locale.tr('rate_dialog_desc'),
-                      textAlign: TextAlign.center,
-                      style: AppTextStyles.bodySmall,
-                    ),
-                    SizedBox(height: 16.h),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(5, (idx) {
-                        final filled = idx < selectedStars;
-                        return GestureDetector(
-                          onTap: () =>
-                              setModalState(() => selectedStars = idx + 1),
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 5.w),
-                            child: Icon(
-                              filled
-                                  ? Icons.star_rounded
-                                  : Icons.star_border_rounded,
-                              color: AppColors.gold,
-                              size: 34.sp,
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
-                    SizedBox(height: 20.h),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.pop(dialogCtx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(locale.tr('rate_thanks_toast')),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        height: 42.h,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(22.r),
-                        ),
-                        child: Text(
-                          locale.tr('rate_submit_btn'),
-                          style: AppTextStyles.exploreButtonText,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+  Future<void> _openRateApp(
+    BuildContext context,
+    WidgetRef ref,
+    LocaleState locale,
+  ) async {
+    final initData = ref.read(sessionProvider).asData?.value.initData;
+    final configuredStoreUrl = initData?.versionGate.storeUrl.trim() ?? '';
+    if (configuredStoreUrl.isNotEmpty) {
+      final uri = Uri.tryParse(configuredStoreUrl);
+      if (uri != null &&
+          await _tryLaunch(uri, const [LaunchMode.externalApplication])) {
+        return;
+      }
+    }
+
+    final pkgFromInit = initData?.app.packageName.trim() ?? '';
+    final pkg = pkgFromInit.isNotEmpty
+        ? pkgFromInit
+        : AppConstants.resolvedPackageId;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      final marketUri = Uri.parse('market://details?id=$pkg');
+      final webStoreUri =
+          Uri.parse('https://play.google.com/store/apps/details?id=$pkg');
+      if (await _tryLaunch(marketUri, const [LaunchMode.externalApplication]) ||
+          await _tryLaunch(
+            webStoreUri,
+            const [LaunchMode.externalApplication, LaunchMode.inAppBrowserView],
+          )) {
+        return;
+      }
+      try {
+        await InAppReview.instance.openStoreListing();
+        return;
+      } catch (e) {
+        debugPrint('Android openStoreListing failed: $e');
+      }
+    } else if (!kIsWeb && Platform.isIOS) {
+      try {
+        if (await InAppReview.instance.isAvailable()) {
+          await InAppReview.instance.requestReview();
+          return;
+        }
+      } catch (e) {
+        debugPrint('iOS requestReview failed: $e');
+      }
+    }
+
+    if (context.mounted) {
+      AppToast.show(context, locale.tr('generic_error_toast'));
+    }
+  }
+
+  Future<bool> _tryLaunch(Uri uri, List<LaunchMode> modes) async {
+    for (final mode in modes) {
+      try {
+        if (await launchUrl(uri, mode: mode)) return true;
+      } catch (e) {
+        debugPrint('Launch URL ($uri, $mode) failed: $e');
+      }
+    }
+    return false;
   }
 
   void _showLegalSheet(
@@ -211,27 +168,26 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _openPrivacyPolicy(
-    BuildContext context,
-    LocaleState locale,
-  ) async {
-    final uri = Uri.parse(AppConstants.privacyPolicyUrl);
-    for (final mode in const [
-      LaunchMode.inAppBrowserView,
-      LaunchMode.externalApplication,
-    ]) {
-      try {
-        if (await launchUrl(uri, mode: mode)) return;
-      } catch (e) {
-        debugPrint('Privacy policy launch ($mode) failed: $e');
-      }
+  Future<void> _openLegalDocument(
+    BuildContext context, {
+    required String url,
+    required String title,
+    required String fallbackContent,
+    required String iconAsset,
+  }) async {
+    final uri = Uri.parse(url);
+    if (await _tryLaunch(
+      uri,
+      const [LaunchMode.inAppBrowserView, LaunchMode.externalApplication],
+    )) {
+      return;
     }
     if (!context.mounted) return;
     _showLegalSheet(
       context,
-      title: locale.tr('menu_privacy'),
-      content: locale.tr('privacy_content'),
-      iconAsset: _icPolicy,
+      title: title,
+      content: fallbackContent,
+      iconAsset: iconAsset,
     );
   }
 
@@ -355,24 +311,35 @@ class ProfileScreen extends ConsumerWidget {
                   _ProfileMenuTile(
                     iconAsset: _icRateApp,
                     title: locale.tr('menu_rate_app'),
-                    onTap: () => _showRateAppDialog(context, locale),
+                    onTap: () => unawaited(_openRateApp(context, ref, locale)),
                   ),
                   SizedBox(height: 12.h),
                   _ProfileMenuTile(
                     iconAsset: _icTerms,
                     title: locale.tr('menu_terms'),
-                    onTap: () => _showLegalSheet(
-                      context,
-                      title: locale.tr('menu_terms'),
-                      content: locale.tr('terms_content'),
-                      iconAsset: _icTerms,
+                    onTap: () => unawaited(
+                      _openLegalDocument(
+                        context,
+                        url: AppConstants.termsOfServiceUrl,
+                        title: locale.tr('menu_terms'),
+                        fallbackContent: locale.tr('terms_content'),
+                        iconAsset: _icTerms,
+                      ),
                     ),
                   ),
                   SizedBox(height: 12.h),
                   _ProfileMenuTile(
                     iconAsset: _icPolicy,
                     title: locale.tr('menu_privacy'),
-                    onTap: () => _openPrivacyPolicy(context, locale),
+                    onTap: () => unawaited(
+                      _openLegalDocument(
+                        context,
+                        url: AppConstants.privacyPolicyUrl,
+                        title: locale.tr('menu_privacy'),
+                        fallbackContent: locale.tr('privacy_content'),
+                        iconAsset: _icPolicy,
+                      ),
+                    ),
                   ),
                 ],
               ),

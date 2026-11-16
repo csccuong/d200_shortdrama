@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,24 +13,47 @@ import 'firebase_options.dart';
 import 'fo/splash/splash_activity.dart';
 import 'services/firebase_remote_config_service.dart';
 
-const String env = Environment.dev;
+const String env = Environment.prod;
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    await FirebaseRemoteConfigService.initFirebaseRemoteConfig();
-  } catch (e) {
-    debugPrint('Firebase initialization skipped/error: $e');
-  }
-  await setupDependencies();
-  await AppInitializer.init(
-    navigatorKey: inject<AppNavigationService>().navigatorKey,
+  await runZonedGuarded<Future<void>>(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Prevent uncaught framework/platform errors from crashing the app process.
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        debugPrint('FlutterError: ${details.exceptionAsString()}');
+      };
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        debugPrint('PlatformDispatcher error: $error');
+        return true;
+      };
+
+      // Bound decoded image memory to avoid Android OOM / LMKT kills on long feeds.
+      PaintingBinding.instance.imageCache
+        ..maximumSize = 120
+        ..maximumSizeBytes = 80 << 20;
+
+      try {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        ).timeout(const Duration(seconds: 5));
+        await FirebaseRemoteConfigService.initFirebaseRemoteConfig();
+      } catch (e) {
+        debugPrint('Firebase initialization skipped/error: $e');
+      }
+      await setupDependencies();
+      await AppInitializer.init(
+        navigatorKey: inject<AppNavigationService>().navigatorKey,
+      );
+      await AppScreenUtils.configureSystemUI();
+      runApp(const BobDramaApp());
+    },
+    (Object error, StackTrace stack) {
+      debugPrint('Uncaught zone error: $error');
+    },
   );
-  await AppScreenUtils.configureSystemUI();
-  runApp(const BobDramaApp());
 }
 
 class BobDramaApp extends StatelessWidget {

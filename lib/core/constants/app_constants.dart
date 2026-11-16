@@ -33,11 +33,20 @@ class AppConstants {
     }
   }
 
+  static const String defaultPackageId =
+      'com.reels.shortdrama.dramaseries.dramota';
+
+  static String get resolvedPackageId {
+    final pkg = packageName.trim();
+    return pkg.isNotEmpty ? pkg : defaultPackageId;
+  }
+
   // GSM & Adjust Constants (replace with project-specific tokens in production)
   static const String gsmAppId = '6af6905edfe0a3aefe4cb0e7';
   static const String adjustToken = 'den3ocinh4ao';
   static const String adjustIapToken = 'ua8nmv';
   static const String privacyPolicyUrl = 'https://dramota.com/privacy';
+  static const String termsOfServiceUrl = 'https://dramota.com/terms';
 
   static final ValueNotifier<bool> isPremiumUser = ValueNotifier<bool>(false)
     ..addListener(() {

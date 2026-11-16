@@ -5,6 +5,7 @@ import '../../ads/const/ad_id_extension.dart';
 import '../../ads/const/ad_id_name.dart';
 import '../../ads/nativefull/native_full_screen.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/episode_unlock_helper.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
 import '../../models/episode_detail.dart';
@@ -12,7 +13,6 @@ import '../../providers/app_providers.dart';
 import '../../services/firebase_remote_config_service.dart';
 import '../../widgets/episode_selector_sheet.dart';
 import '../../widgets/floating_drama_native_ad.dart';
-import '../../widgets/player_settings_sheet.dart';
 import '../../widgets/short_video_item.dart';
 
 class DramaPlayerScreen extends ConsumerStatefulWidget {
@@ -132,16 +132,6 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                 .read(rewardsProvider.notifier)
                 .fetchOverview(AppConstants.selectedLanguageCode),
           );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '${ref.read(localeProvider).tr('claim_btn')}: ${newCodes.join(', ')}',
-                ),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
         }
       }
     } catch (_) {
@@ -326,7 +316,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
         ),
         body: Center(
           child: Text(
-            detailAsync.error?.toString() ?? 'Unable to load drama',
+            ref.read(localeProvider).tr('generic_error_toast'),
             style: AppTextStyles.bodySmall,
           ),
         ),
@@ -334,7 +324,16 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     }
 
     final totalEpisodes = _resolveTotalEpisodes(effectiveDrama, episodes);
-    final subLangs = effectiveDrama.availableSubLangs;
+    final episodesByNumber = EpisodeUnlockHelper.indexByNumber(episodes);
+    final firstLockedEp = EpisodeUnlockHelper.findFirstLockedEpisode(
+      totalEpisodes: totalEpisodes,
+      drama: effectiveDrama,
+      episodesByNumber: episodesByNumber,
+      isVip: isVipUser ||
+          ref.watch(userWalletProvider.select((s) => s.isVip)),
+      locallyUnlockedEpisodes: _locallyUnlockedEpisodes,
+      fullDramaUnlocked: _fullDramaUnlocked,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -372,6 +371,10 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                   !_didUseInitialSeek && epNo == widget.initialEpisode
                       ? widget.initialPositionSec
                       : 0;
+              final requiredUnlockEp =
+                  (firstLockedEp != null && epNo > firstLockedEp)
+                      ? firstLockedEp
+                      : null;
               return ShortVideoItem(
                 drama: effectiveDrama,
                 episodeNo: epNo,
@@ -382,6 +385,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                 onOpenEpisodeList: () =>
                     _openEpisodeSheet(effectiveDrama, episodes, isVipUser),
                 showFullDramaButton: false,
+                requiredUnlockEpisode: requiredUnlockEp,
                 onEpisodeUnlocked: (unlockedEp, fullDrama) {
                   setState(() {
                     _locallyUnlockedEpisodes.add(unlockedEp);
@@ -440,48 +444,6 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                             style: AppTextStyles.playerHeaderSubtitle,
                           ),
                         ],
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () => _openEpisodeSheet(
-                        effectiveDrama,
-                        episodes,
-                        isVipUser,
-                      ),
-                      style: TextButton.styleFrom(
-                        backgroundColor: AppColors.overlayMedium,
-                        foregroundColor: AppColors.textPrimary,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 12.w,
-                          vertical: 6.h,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20.r),
-                        ),
-                      ),
-                      icon: Icon(Icons.list_rounded, size: 17.sp),
-                      label: Text(
-                        locale.tr('select_episode'),
-                        style: AppTextStyles.buttonMedium,
-                      ),
-                    ),
-                    SizedBox(width: 6.w),
-                    GestureDetector(
-                      onTap: () => PlayerSettingsSheet.show(
-                        context,
-                        availableSubLangs: subLangs,
-                      ),
-                      child: Container(
-                        padding: EdgeInsets.all(8.w),
-                        decoration: const BoxDecoration(
-                          color: AppColors.overlayMedium,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.tune_rounded,
-                          color: AppColors.textPrimary,
-                          size: 19.sp,
-                        ),
                       ),
                     ),
                   ],

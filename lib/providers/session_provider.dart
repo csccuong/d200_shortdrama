@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_constants.dart';
 import '../core/di/injection.dart';
+import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../core/security/drama_remote_config_service.dart';
 import '../models/init_response.dart';
@@ -110,7 +111,7 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       debugPrint('SessionNotifier.initializeSession error: $e');
       final errorState = SessionState(
         isInitialized: false,
-        error: e.toString(),
+        error: AppStrings.genericError(),
       );
       state = AsyncValue.error(e, st);
       return errorState;
@@ -172,14 +173,10 @@ final dioProvider = Provider<Dio>((ref) {
   return dio;
 });
 
-/// Extracts a concise user-facing error message from Dio / runtime errors.
+/// Returns a generic, user-friendly error message without exposing HTTP status codes or raw exception details.
 String? formatDisplayApiError(Object? err) {
   if (err == null) return null;
-  if (err is DioException) {
-    final msg = err.message?.trim();
-    if (msg != null && msg.isNotEmpty) return msg;
-  }
-  return err.toString();
+  return AppStrings.genericError();
 }
 
 extension SessionAsyncX on AsyncValue<SessionState> {

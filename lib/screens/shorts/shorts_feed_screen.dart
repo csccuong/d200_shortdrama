@@ -11,6 +11,7 @@ import '../../models/episode_detail.dart';
 import '../../models/feed_response.dart';
 import '../../models/taxonomy_models.dart';
 import '../../providers/app_providers.dart';
+import '../../services/api/home_api_service.dart';
 import '../../widgets/drama_network_image.dart';
 import '../../widgets/episode_selector_sheet.dart';
 import '../../widgets/short_video_item.dart';
@@ -33,11 +34,12 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   final ScrollController _allDramasScrollCtrl = ScrollController();
   final Dio _prefetchDio = Dio(
     BaseOptions(
-      connectTimeout: const Duration(seconds: 6),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
     ),
   );
   final Set<String> _prefetchedUrls = {};
+  CancelToken _prefetchCancelToken = CancelToken();
 
   int _topTab = 0; // 0: For you (Vertical Feed) | 1: All Dramas
   int _currentIndex = 0;
@@ -88,7 +90,8 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   void dispose() {
     _pageController.dispose();
     _allDramasScrollCtrl.dispose();
-    _prefetchDio.close();
+    _prefetchCancelToken.cancel('disposed');
+    _prefetchDio.close(force: true);
     super.dispose();
   }
 
@@ -160,15 +163,22 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
         _isLoadingAll = false;
       });
     } catch (e) {
+      debugPrint('ShortsFeedScreen._loadAllDramas error: $e');
       if (!mounted) return;
       setState(() {
         _isLoadingAll = false;
-        _allError = e.toString();
+        _allError = ref.read(localeProvider).tr('generic_error_toast');
       });
     }
   }
 
   void _prefetchAhead(List<ForYouItem> items, int currentIdx) {
+    if (!_prefetchCancelToken.isCancelled) {
+      _prefetchCancelToken.cancel('scroll');
+    }
+    _prefetchCancelToken = CancelToken();
+    final token = _prefetchCancelToken;
+
     final coord = inject<AppStartupCoordinator>();
     for (int offset = 1; offset <= 2; offset++) {
       final targetIdx = currentIdx + offset;
@@ -177,17 +187,25 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
       if (rawUrl.isEmpty) continue;
       final resolved = coord.resolveMediaUrl(rawUrl);
       if (resolved.isEmpty || _prefetchedUrls.contains(resolved)) continue;
-      _prefetchedUrls.add(resolved);
+
       unawaited(
         _prefetchDio
-            .get<List<int>>(
+            .get<ResponseBody>(
               resolved,
+              cancelToken: token,
               options: Options(
-                headers: const {'Range': 'bytes=0-1500000'},
-                responseType: ResponseType.bytes,
+                headers: const {'Range': 'bytes=0-65535'},
+                responseType: ResponseType.stream,
               ),
             )
-            .then<void>((_) {}, onError: (_) {}),
+            .then<void>((resp) async {
+              while (_prefetchedUrls.length >= 60) {
+                _prefetchedUrls.remove(_prefetchedUrls.first);
+              }
+              _prefetchedUrls.add(resolved);
+              await resp.data?.stream.drain<void>();
+            })
+            .catchError((_) {}),
       );
     }
   }
@@ -393,7 +411,10 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
                     ],
                     if (countries.isNotEmpty) ...[
                       SizedBox(height: 14.h),
-                      Text('Country', style: AppTextStyles.caption),
+                      Text(
+                        locale.tr('filter_country'),
+                        style: AppTextStyles.caption,
+                      ),
                       SizedBox(height: 8.h),
                       Wrap(
                         spacing: 8.w,
@@ -424,7 +445,10 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
                     ],
                     if (regions.isNotEmpty) ...[
                       SizedBox(height: 14.h),
-                      Text('Region', style: AppTextStyles.caption),
+                      Text(
+                        locale.tr('filter_region'),
+                        style: AppTextStyles.caption,
+                      ),
                       SizedBox(height: 8.h),
                       Wrap(
                         spacing: 8.w,
@@ -1025,7 +1049,7 @@ class _ForYouSearchSheetState extends ConsumerState<_ForYouSearchSheet> {
   final TextEditingController _searchCtrl = TextEditingController();
   Timer? _debounce;
   String _query = '';
-  List<String> _hotKeywords = [];
+  List<HotKeywordItem> _hotKeywords = [];
   List<DramaCard> _hotDramas = [];
   List<DramaCard> _searchResults = [];
   bool _isLoading = false;
@@ -1049,17 +1073,11 @@ class _ForYouSearchSheetState extends ConsumerState<_ForYouSearchSheet> {
     try {
       final lang = ref.read(localeProvider).appLanguage;
       final data = await ref.read(homeApiServiceProvider).searchHot(lang: lang);
-      final rawKws = data['hot_keywords'] ?? data['keywords'];
+      final parsedKws = HomeApiService.parseHotKeywords(data, limit: 8);
       final rawDramas = data['hot_dramas'] ?? data['trending'] ?? data['dramas'];
       if (!mounted) return;
       setState(() {
-        if (rawKws is List) {
-          _hotKeywords = rawKws
-              .map((e) => e is Map ? (e['keyword'] ?? e['title'] ?? '').toString() : e.toString())
-              .where((s) => s.trim().isNotEmpty)
-              .take(8)
-              .toList();
-        }
+        _hotKeywords = parsedKws;
         if (rawDramas is List) {
           _hotDramas = rawDramas
               .whereType<Map<String, dynamic>>()
@@ -1091,13 +1109,27 @@ class _ForYouSearchSheetState extends ConsumerState<_ForYouSearchSheet> {
     });
   }
 
-  Future<void> _runSearch(String q) async {
+  void _selectHotKeyword(HotKeywordItem item) {
+    _debounce?.cancel();
+    _searchCtrl.value = TextEditingValue(
+      text: item.keyword,
+      selection: TextSelection.collapsed(offset: item.keyword.length),
+    );
+    setState(() => _query = item.keyword);
+    unawaited(_runSearch(item.keyword, apiQuery: item.searchQuery));
+  }
+
+  Future<void> _runSearch(String displayQuery, {String? apiQuery}) async {
+    final effectiveQuery = (apiQuery ?? displayQuery).trim();
+    if (effectiveQuery.isEmpty) return;
+
     setState(() => _isLoading = true);
     try {
       final lang = ref.read(localeProvider).appLanguage;
-      final res =
-          await ref.read(homeApiServiceProvider).search(query: q, lang: lang);
-      if (!mounted || _query.trim() != q) return;
+      final res = await ref
+          .read(homeApiServiceProvider)
+          .search(query: effectiveQuery, lang: lang);
+      if (!mounted || _query.trim() != displayQuery) return;
       setState(() {
         _searchResults = res.items;
         _isLoading = false;
@@ -1201,12 +1233,9 @@ class _ForYouSearchSheetState extends ConsumerState<_ForYouSearchSheet> {
             Wrap(
               spacing: 8.w,
               runSpacing: 6.h,
-              children: _hotKeywords.map((kw) {
+              children: _hotKeywords.map((item) {
                 return GestureDetector(
-                  onTap: () {
-                    _searchCtrl.text = kw;
-                    _onChanged(kw);
-                  },
+                  onTap: () => _selectHotKeyword(item),
                   child: Container(
                     padding:
                         EdgeInsets.symmetric(horizontal: 10.w, vertical: 5.h),
@@ -1215,7 +1244,7 @@ class _ForYouSearchSheetState extends ConsumerState<_ForYouSearchSheet> {
                       borderRadius: BorderRadius.circular(14.r),
                       border: Border.all(color: AppColors.borderSubtle),
                     ),
-                    child: Text(kw, style: AppTextStyles.caption),
+                    child: Text(item.keyword, style: AppTextStyles.caption),
                   ),
                 );
               }).toList(),

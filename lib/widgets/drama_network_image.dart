@@ -37,6 +37,16 @@ class DramaNetworkImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resolved = resolveUrl(imageUrl);
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 2.0;
+    int? targetCacheWidth;
+    int? targetCacheHeight;
+    if (width != null && width!.isFinite && width! > 0) {
+      targetCacheWidth = (width! * dpr).round().clamp(120, 900);
+    } else if (height != null && height!.isFinite && height! > 0) {
+      targetCacheHeight = (height! * dpr).round().clamp(160, 1200);
+    } else {
+      targetCacheWidth = (360 * dpr).round().clamp(360, 900);
+    }
 
     Widget content;
     if (resolved.isEmpty) {
@@ -47,7 +57,10 @@ class DramaNetworkImage extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
-        filterQuality: FilterQuality.medium,
+        cacheWidth: targetCacheWidth,
+        cacheHeight: targetCacheHeight,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.low,
         loadingBuilder: (context, child, loadingProgress) {
           if (loadingProgress == null) return child;
           return Container(

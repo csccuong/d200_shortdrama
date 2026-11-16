@@ -9,6 +9,7 @@ class SrtParser {
     r'(?:(\d{1,2}):)?(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(?:(\d{1,2}):)?(\d{2}):(\d{2})[,.](\d{3})',
   );
 
+  static const int _maxCacheEntries = 40;
   static final Map<String, List<SubtitleCue>> _urlCache = {};
 
   /// Plain Dio without X-Sign headers for public CDN/stream WebVTT/SRT URLs.
@@ -34,13 +35,19 @@ class SrtParser {
             ? trimmed
             : 'https://api.dramota.com${trimmed.startsWith('/') ? trimmed : '/$trimmed'}');
 
-    final cached = _urlCache[resolved];
-    if (cached != null) return cached;
+    final cached = _urlCache.remove(resolved);
+    if (cached != null) {
+      _urlCache[resolved] = cached;
+      return cached;
+    }
 
     final resp = await _mediaDio.get<String>(resolved);
     final body = resp.data ?? '';
     final cues = parse(body);
     if (cues.isNotEmpty) {
+      if (_urlCache.length >= _maxCacheEntries) {
+        _urlCache.remove(_urlCache.keys.first);
+      }
       _urlCache[resolved] = cues;
     }
     return cues;
@@ -123,10 +130,10 @@ class SrtParser {
 
   static Duration _parseDuration(String h, String m, String s, String ms) {
     return Duration(
-      hours: int.parse(h),
-      minutes: int.parse(m),
-      seconds: int.parse(s),
-      milliseconds: int.parse(ms),
+      hours: int.tryParse(h) ?? 0,
+      minutes: int.tryParse(m) ?? 0,
+      seconds: int.tryParse(s) ?? 0,
+      milliseconds: int.tryParse(ms) ?? 0,
     );
   }
 

@@ -15,12 +15,13 @@ class SubtitleTrack {
   });
 
   factory SubtitleTrack.fromJson(Map<String, dynamic> json) {
+    final rawLang = (json['language'] ?? json['lang'])?.toString().trim() ?? '';
     return SubtitleTrack(
-      language: json['language'] as String? ?? '',
-      label: json['label'] as String? ?? '',
-      format: json['format'] as String? ?? 'vtt',
+      language: rawLang,
+      label: json['label']?.toString() ?? '',
+      format: json['format']?.toString() ?? 'vtt',
       isDefault: json['is_default'] as bool? ?? false,
-      url: json['url'] as String? ?? '',
+      url: json['url']?.toString() ?? '',
     );
   }
 }
