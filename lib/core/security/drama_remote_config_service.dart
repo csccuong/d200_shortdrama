@@ -1,4 +1,5 @@
 import 'package:firebase_remote_config/firebase_remote_config.dart';
+import '../../services/firebase_remote_config_service.dart';
 import 'drama_crypto_engine.dart';
 
 class DramaBootstrapConfig {
@@ -53,11 +54,12 @@ class DramaRemoteConfigService {
     final rc = FirebaseRemoteConfig.instance;
     await rc.setConfigSettings(RemoteConfigSettings(
       fetchTimeout: const Duration(seconds: 4),
-      minimumFetchInterval: const Duration(minutes: 15),
+      minimumFetchInterval: FirebaseRemoteConfigService.minimumFetchInterval,
     ));
 
-    // Toàn bộ 9 tham số chuỗi phẳng rc_* (0% JSON, tương thích 100% Firebase Console, không dấu '-')
-    await rc.setDefaults(const {
+    // Merge with ad placement defaults so setDefaults never wipes out ad flags on the shared instance.
+    await rc.setDefaults({
+      ...FirebaseRemoteConfigService.defaultValues,
       'rc_app_code': '',
       'rc_api_url_primary': '',
       'rc_api_url_fallback': '',
@@ -69,11 +71,9 @@ class DramaRemoteConfigService {
       'rc_maintenance_msg': 'System maintenance in progress.',
     });
 
-    try {
-      await rc.fetchAndActivate();
-    } catch (_) {
-      // Mạng yếu hoặc Google bị chặn -> Dùng giá trị cache đã lưu lần trước hoặc fallback
-    }
+    await FirebaseRemoteConfigService.fetchLatest(
+      timeout: const Duration(seconds: 4),
+    );
 
     // 1. Đọc rc_app_code (Plaintext) ĐẦU TIÊN để đồng bộ appCode trước khi dẫn xuất RC_V2!
     final rcAppCode = rc.getString('rc_app_code').trim();

@@ -17,8 +17,7 @@ class UnlockRewardOverlay extends StatefulWidget {
   final bool isUnlocking;
   final LocaleState locale;
   final VoidCallback onUnlockWithAd;
-  final VoidCallback onUnlockWithCoins;
-  final VoidCallback onUnlockFullDrama;
+  final VoidCallback? onOpenRewardsOrVip;
 
   const UnlockRewardOverlay({
     super.key,
@@ -29,8 +28,7 @@ class UnlockRewardOverlay extends StatefulWidget {
     required this.isUnlocking,
     required this.locale,
     required this.onUnlockWithAd,
-    required this.onUnlockWithCoins,
-    required this.onUnlockFullDrama,
+    this.onOpenRewardsOrVip,
   });
 
   @override
@@ -152,14 +150,13 @@ class _UnlockRewardOverlayState extends State<UnlockRewardOverlay>
                               letterSpacing: 0.2,
                             ),
                           ),
-                          SizedBox(height: 8.h),
-                          _BalanceOrLimitPill(
-                            isDailyLimitReached:
-                                widget.blockReason == 'DAILY_LIMIT_REACHED',
-                            options: opts,
-                            locale: locale,
-                          ),
-                          SizedBox(height: 18.h),
+                          if (widget.blockReason == 'DAILY_LIMIT_REACHED') ...[
+                            _DailyLimitPill(
+                              options: opts,
+                            ),
+                            SizedBox(height: 16.h),
+                          ] else
+                            SizedBox(height: 18.h),
                           if (hasAdQuota) ...[
                             _RewardAdCtaButton(
                               animation: _animCtrl,
@@ -171,37 +168,39 @@ class _UnlockRewardOverlayState extends State<UnlockRewardOverlay>
                                   '${opts.adUnlocksRemainingToday}/${opts.adUnlockDailyLimit}',
                               onTap: widget.onUnlockWithAd,
                             ),
-                            SizedBox(height: 11.h),
+                            SizedBox(height: 10.h),
                           ],
-                          if (opts.coinCost > 0 && opts.canAffordSingle) ...[
-                            _CoinUnlockButton(
-                              isUnlocking: widget.isUnlocking,
-                              label:
-                                  '${locale.tr('unlock_ep_title')} (${opts.coinCost} ${locale.tr('coins')})',
-                              onTap: widget.onUnlockWithCoins,
-                            ),
-                            SizedBox(height: 8.h),
-                          ],
-                          if (opts.fullDramaCoinCost > 0 &&
-                              opts.fullDramaRemainingEpisodes > 1 &&
-                              opts.canAffordFullDrama)
+                          if (widget.onOpenRewardsOrVip != null)
                             SizedBox(
                               width: double.infinity,
-                              child: TextButton(
+                              child: OutlinedButton.icon(
                                 onPressed: widget.isUnlocking
                                     ? null
-                                    : widget.onUnlockFullDrama,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppColors.textWhite70,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: 8.h,
-                                    horizontal: 8.w,
+                                    : widget.onOpenRewardsOrVip,
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor:
+                                      AppColors.gold.withValues(alpha: 0.08),
+                                  foregroundColor: AppColors.gold,
+                                  side: BorderSide(
+                                    color:
+                                        AppColors.gold.withValues(alpha: 0.72),
+                                    width: 1.2,
                                   ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14.r),
+                                  ),
+                                  padding:
+                                      EdgeInsets.symmetric(vertical: 11.h),
                                 ),
-                                child: Text(
-                                  '${locale.tr('full_series')} (${opts.fullDramaRemainingEpisodes} ${locale.tr('episodes_suffix')} • ${opts.fullDramaCoinCost} ${locale.tr('coins')}${opts.fullDramaDiscountPct > 0 ? ' -${opts.fullDramaDiscountPct}%' : ''})',
-                                  textAlign: TextAlign.center,
-                                  style: AppTextStyles.caption,
+                                icon: Icon(
+                                  Icons.workspace_premium_rounded,
+                                  size: 18.sp,
+                                ),
+                                label: Text(
+                                  locale.tr('upgrade_vip_title'),
+                                  style: AppTextStyles.buttonMedium.copyWith(
+                                    color: AppColors.gold,
+                                  ),
                                 ),
                               ),
                             ),
@@ -219,16 +218,10 @@ class _UnlockRewardOverlayState extends State<UnlockRewardOverlay>
   }
 }
 
-class _BalanceOrLimitPill extends StatelessWidget {
-  final bool isDailyLimitReached;
+class _DailyLimitPill extends StatelessWidget {
   final UnlockOptions options;
-  final LocaleState locale;
 
-  const _BalanceOrLimitPill({
-    required this.isDailyLimitReached,
-    required this.options,
-    required this.locale,
-  });
+  const _DailyLimitPill({required this.options});
 
   @override
   Widget build(BuildContext context) {
@@ -238,28 +231,21 @@ class _BalanceOrLimitPill extends StatelessWidget {
         color: AppColors.glassFill,
         borderRadius: BorderRadius.circular(20.r),
         border: Border.all(
-          color: isDailyLimitReached
-              ? AppColors.primaryBright.withValues(alpha: 0.35)
-              : AppColors.gold.withValues(alpha: 0.28),
+          color: AppColors.primaryBright.withValues(alpha: 0.35),
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isDailyLimitReached
-                ? Icons.hourglass_bottom_rounded
-                : Icons.monetization_on_rounded,
+            Icons.hourglass_bottom_rounded,
             size: 14.sp,
-            color:
-                isDailyLimitReached ? AppColors.primaryBright : AppColors.gold,
+            color: AppColors.primaryBright,
           ),
           SizedBox(width: 6.w),
           Flexible(
             child: Text(
-              isDailyLimitReached
-                  ? 'Daily free ad limit reached (${options.adUnlocksRemainingToday}/${options.adUnlockDailyLimit})'
-                  : '${locale.tr('current_balance')}: ${options.userTotalCoins} ${locale.tr('coins')}',
+              'Daily free ad limit reached (${options.adUnlocksRemainingToday}/${options.adUnlockDailyLimit})',
               textAlign: TextAlign.center,
               style: AppTextStyles.caption.copyWith(
                 color: AppColors.textWhite70,
@@ -444,45 +430,6 @@ class _RewardAdCtaButton extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _CoinUnlockButton extends StatelessWidget {
-  final bool isUnlocking;
-  final String label;
-  final VoidCallback onTap;
-
-  const _CoinUnlockButton({
-    required this.isUnlocking,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 44.h,
-      child: OutlinedButton.icon(
-        onPressed: isUnlocking ? null : onTap,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.gold.withValues(alpha: 0.08),
-          foregroundColor: AppColors.gold,
-          side: BorderSide(
-            color: AppColors.gold.withValues(alpha: 0.72),
-            width: 1.2,
-          ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14.r),
-          ),
-        ),
-        icon: Icon(Icons.monetization_on_rounded, size: 18.sp),
-        label: Text(
-          label,
-          style: AppTextStyles.buttonMedium.copyWith(color: AppColors.gold),
-        ),
-      ),
     );
   }
 }

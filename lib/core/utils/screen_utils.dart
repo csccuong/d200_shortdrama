@@ -41,10 +41,15 @@ class AppScreenUtils {
     systemNavigationBarIconBrightness: Brightness.light,
   );
 
+  /// Configure orientation and sticky immersive system bars across all screens.
+  static Future<void> applyImmersiveMode() async {
+    SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
   /// Configure orientation and system bars for both Android and iOS.
   static Future<void> configureSystemUI() async {
-    SystemChrome.setSystemUIOverlayStyle(systemUiOverlayStyle);
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    await applyImmersiveMode();
     await SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,

@@ -7,7 +7,7 @@ class VipSubscription {
   final String currency;
   final List<String> features;
 
-  VipSubscription({
+  const VipSubscription({
     required this.productId,
     this.name = '',
     this.durationDays = 30,
@@ -66,10 +66,41 @@ class CoinPackage {
 
 /// Full IAP catalog from GET /v1/iap/catalog.
 class IapCatalog {
+  static const String weeklyProductId = 'com.reels.shortdrama.weekly';
+  static const String monthlyProductId = 'com.reels.shortdrama.monthly';
+  static const String yearlyProductId = 'com.reels.shortdrama.yearly';
+
+  static const List<VipSubscription> defaultVipSubscriptions = [
+    VipSubscription(
+      productId: weeklyProductId,
+      name: 'weekly',
+      durationDays: 7,
+      price: 5.0,
+      currency: 'USD',
+      features: ['unlock all', 'no ads', 'full features'],
+    ),
+    VipSubscription(
+      productId: monthlyProductId,
+      name: 'monthly',
+      durationDays: 30,
+      price: 12.0,
+      currency: 'USD',
+      features: ['unlock all', 'no ads', 'full features'],
+    ),
+    VipSubscription(
+      productId: yearlyProductId,
+      name: 'yearly',
+      durationDays: 365,
+      price: 67.0,
+      currency: 'USD',
+      features: ['unlock all', 'no ads', 'full features'],
+    ),
+  ];
+
   final List<VipSubscription> subscriptions;
   final List<CoinPackage> coinPackages;
 
-  IapCatalog({
+  const IapCatalog({
     this.subscriptions = const [],
     this.coinPackages = const [],
   });

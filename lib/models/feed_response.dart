@@ -1,41 +1,73 @@
 import 'drama_card.dart';
 import 'play_response.dart';
+import 'stream_bundle.dart';
 
 /// Preview info embedded in each For You feed item.
 class PreviewInfo {
   final int episodeNumber;
   final int durationSec;
+  final bool hasStream;
   final String videoUrl;
   final List<SubtitleTrack> subtitles;
-  final int streamExpiresIn;
+  final int expiresInSec;
+  final int? expiresAt;
+  final DateTime expireAt;
   final bool watchFullDramaCta;
   final int watchFullDramaTargetEpisode;
+
+  int get streamExpiresIn => expiresInSec;
+
+  bool get isStreamExpired => DateTime.now().isAfter(expireAt);
 
   PreviewInfo({
     this.episodeNumber = 1,
     this.durationSec = 0,
+    this.hasStream = true,
     this.videoUrl = '',
     this.subtitles = const [],
-    this.streamExpiresIn = 1800,
+    int? expiresInSec,
+    int streamExpiresIn = StreamBundle.defaultForYouTtlSec,
+    this.expiresAt,
+    DateTime? expireAt,
     this.watchFullDramaCta = false,
     this.watchFullDramaTargetEpisode = 1,
-  });
+  })  : expiresInSec = expiresInSec ?? streamExpiresIn,
+        expireAt = expireAt ??
+            StreamBundle.computeSafeExpireAt(expiresInSec ?? streamExpiresIn);
+
+  StreamBundle toStreamBundle() => StreamBundle(
+        videoUrl: videoUrl,
+        subtitles: subtitles,
+        expiresInSec: expiresInSec,
+        expiresAt: expiresAt,
+        expireAt: expireAt,
+      );
 
   factory PreviewInfo.fromJson(Map<String, dynamic> json) {
+    final videoUrl = json['video_url']?.toString() ?? '';
+    final ttl = StreamBundle.parseTtlSec(
+      json,
+      defaultTtlSec: StreamBundle.defaultForYouTtlSec,
+    );
     return PreviewInfo(
-      episodeNumber: json['episode_number'] as int? ?? 1,
-      durationSec: json['duration_sec'] as int? ?? 0,
-      videoUrl: json['video_url'] as String? ?? '',
+      episodeNumber: (json['episode_number'] as num?)?.toInt() ?? 1,
+      durationSec: (json['duration_sec'] as num?)?.toInt() ?? 0,
+      hasStream: json['has_stream'] as bool? ?? videoUrl.isNotEmpty,
+      videoUrl: videoUrl,
       subtitles: (json['subtitles'] as List<dynamic>?)
-              ?.map(
-                  (e) => SubtitleTrack.fromJson(e as Map<String, dynamic>))
+              ?.whereType<Map<dynamic, dynamic>>()
+              .map(
+                (e) => SubtitleTrack.fromJson(Map<String, dynamic>.from(e)),
+              )
               .toList() ??
           const [],
-      streamExpiresIn: json['stream_expires_in'] as int? ?? 1800,
+      expiresInSec: ttl,
+      expiresAt: StreamBundle.parseExpiresAtUnix(json),
+      expireAt: StreamBundle.computeSafeExpireAt(ttl),
       watchFullDramaCta:
           json['watch_full_drama_cta'] as bool? ?? false,
       watchFullDramaTargetEpisode:
-          json['watch_full_drama_target_episode'] as int? ?? 1,
+          (json['watch_full_drama_target_episode'] as num?)?.toInt() ?? 1,
     );
   }
 }
@@ -43,6 +75,8 @@ class PreviewInfo {
 /// A DramaCard extended with a preview for the For You vertical feed.
 class ForYouItem extends DramaCard {
   final PreviewInfo? preview;
+
+  bool get isStreamExpired => preview?.isStreamExpired ?? false;
 
   ForYouItem({
     super.id,

@@ -5,29 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
+import '../../core/utils/vip_package_helper.dart';
 import '../../models/drama_card.dart';
-import '../../models/iap_models.dart';
-import '../../models/rewards_models.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/drama_network_image.dart';
+import '../../widgets/iap_subscription_footer.dart';
 import '../player/drama_player_screen.dart';
-
-/// Configuration model for fallback VIP subscription packages.
-class RewardVipPackage {
-  final String productId;
-  final String planKey;
-  final String title;
-  final String price;
-  final String? discountBadge;
-
-  const RewardVipPackage({
-    required this.productId,
-    required this.planKey,
-    required this.title,
-    required this.price,
-    this.discountBadge,
-  });
-}
 
 class RewardsScreen extends ConsumerStatefulWidget {
   const RewardsScreen({super.key});
@@ -67,7 +50,6 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
     if (!ready || !mounted) return;
     final lang = ref.read(localeProvider).appLanguage;
     await Future.wait([
-      ref.read(rewardsProvider.notifier).fetchOverview(lang),
       ref.read(accountProvider.notifier).fetchIapCatalog(lang: lang),
       _fetchVipDramas(lang),
     ]);
@@ -119,97 +101,12 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
     });
   }
 
-  List<RewardVipPackage> _resolveVipPackages(
-    IapCatalog? catalog,
-    LocaleState locale,
-  ) {
-    if (catalog != null && catalog.subscriptions.isNotEmpty) {
-      return catalog.subscriptions.asMap().entries.map((e) {
-        final sub = e.value;
-        final priceStr =
-            '${sub.price.toStringAsFixed(2)} ${sub.currency}'.trim();
-        return RewardVipPackage(
-          productId: sub.productId,
-          planKey: sub.productId,
-          title: sub.name.isNotEmpty ? sub.name : '${sub.durationDays}d VIP',
-          price: priceStr,
-          discountBadge: sub.features.isNotEmpty
-              ? sub.features.first
-              : (e.key == 1 ? locale.tr('reward_save_30') : null),
-        );
-      }).toList();
-    }
-
-    return const [];
-  }
-
-  Future<void> _verifyPurchase({
-    required String productId,
-    required String title,
-    required String priceLabel,
-    required LocaleState locale,
-  }) async {
-    final token =
-        'play_${productId}_${DateTime.now().millisecondsSinceEpoch}';
-    final ok = await ref.read(accountProvider.notifier).verifyIap(
-          productId: productId,
-          purchaseToken: token,
-        );
+  Future<void> _handleRestorePurchases(LocaleState locale) async {
+    final started = await ref.read(accountProvider.notifier).restorePurchases();
     if (!mounted) return;
-    if (ok) {
-      ref.read(eventTrackerProvider).track(
-        'iap_purchase',
-        sourceScreen: 'rewards',
-        props: {'product_id': productId},
-      );
-      AppToast.show(
-        context,
-        '${locale.tr('activated_vip_toast')}: $title ($priceLabel)',
-      );
-    } else {
-      AppToast.show(context, locale.tr('generic_error_toast'));
+    if (!started) {
+      AppToast.show(context, 'Google Play Billing is currently unavailable');
     }
-  }
-
-  Future<void> _handleCheckIn({bool adBonus = false}) async {
-    if (adBonus) {
-      final earned = await showRewardUnlock(context, ref);
-      if (!mounted) return;
-      if (!earned) {
-        AppToast.show(context, ref.read(localeProvider).tr('reward_ad_failed'));
-        return;
-      }
-    }
-    final ok = await ref.read(rewardsProvider.notifier).checkIn(adBonus: adBonus);
-    if (!mounted) return;
-    final locale = ref.read(localeProvider);
-    AppToast.show(
-      context,
-      locale.tr(ok ? 'claimed_toast' : 'generic_error_toast'),
-    );
-  }
-
-  Future<void> _handleTaskAction(RewardTask task) async {
-    final locale = ref.read(localeProvider);
-    if (task.isCompleted) return;
-
-    if (task.taskCode == 'watch_ad_bonus' && !task.canClaim) {
-      final earned = await showRewardUnlock(context, ref);
-      if (!mounted) return;
-      if (!earned) {
-        AppToast.show(context, locale.tr('reward_ad_failed'));
-        return;
-      }
-    } else if (!task.canClaim) {
-      return;
-    }
-
-    final ok = await ref.read(rewardsProvider.notifier).claimTask(task.taskCode);
-    if (!mounted) return;
-    AppToast.show(
-      context,
-      locale.tr(ok ? 'claimed_toast' : 'generic_error_toast'),
-    );
   }
 
   void _showAllVipDramasSheet(List<DramaCard> dramas, LocaleState locale) {
@@ -294,7 +191,6 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
     final wallet = ref.watch(walletProvider);
-    final rewardsAsync = ref.watch(rewardsProvider);
 
     ref.listen<AsyncValue<SessionState>>(sessionProvider, (prev, next) {
       if (!(prev?.isReady ?? false) && next.isReady) {
@@ -306,14 +202,15 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
         ref.watch(homeProvider).asData?.value.homeData?.vipExclusive ??
             const <DramaCard>[];
 
-    final rewardsState = rewardsAsync.asData?.value;
-    final overview = rewardsState?.overview;
-    final vipPackages =
-        _resolveVipPackages(accountState.iapCatalog, locale);
+    final vipPackages = VipPackageHelper.resolvePackages(
+      catalog: accountState.iapCatalog,
+      storeProducts: accountState.storeProducts,
+      isLoadingCatalog: accountState.isLoadingCatalog,
+      locale: locale,
+    );
     final safePlanIdx = vipPackages.isEmpty
         ? 0
         : _selectedPlanIndex.clamp(0, vipPackages.length - 1);
-    final coinPacks = accountState.iapCatalog?.coinPackages ?? const [];
 
     final vipDramas = _vipDramas.isNotEmpty ? _vipDramas : homeVip;
     final previewDramas = vipDramas.take(6).toList();
@@ -376,57 +273,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      locale.tr('reward_hero_line1'),
-                                      style: AppTextStyles.rewardHeroUnlock,
-                                    ),
-                                    Text(
-                                      locale.tr('reward_hero_line2'),
-                                      style: AppTextStyles.rewardHeroHighlight,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Wallet Coins Pill
-                              Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 10.w,
-                                  vertical: 5.h,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.overlayDark,
-                                  borderRadius: BorderRadius.circular(18.r),
-                                  border: Border.all(
-                                    color: AppColors.gold.withValues(alpha: 0.4),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.monetization_on_rounded,
-                                      color: AppColors.gold,
-                                      size: 16.sp,
-                                    ),
-                                    SizedBox(width: 5.w),
-                                    Text(
-                                      '${wallet.totalCoins}',
-                                      style: AppTextStyles.bodyMedium.copyWith(
-                                        color: AppColors.gold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Text(
+                            locale.tr('reward_hero_line1'),
+                            style: AppTextStyles.rewardHeroUnlock,
+                          ),
+                          Text(
+                            locale.tr('reward_hero_line2'),
+                            style: AppTextStyles.rewardHeroHighlight,
                           ),
                           SizedBox(height: 8.h),
                           Text(
@@ -514,11 +367,12 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                           : () {
                               final pkg = vipPackages[safePlanIdx];
                               unawaited(
-                                _verifyPurchase(
-                                  productId: pkg.productId,
-                                  title: pkg.title,
-                                  priceLabel: pkg.price,
+                                VipPackageHelper.purchaseSubscription(
+                                  context: context,
+                                  ref: ref,
+                                  package: pkg,
                                   locale: locale,
+                                  sourceScreen: 'rewards',
                                 ),
                               );
                             },
@@ -550,93 +404,23 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                       ),
                     ),
                   ),
-                ],
-
-                // 4. Coin Packages Section (if IAP catalog loaded)
-                if (coinPacks.isNotEmpty) ...[
-                  SizedBox(height: 22.h),
+                  SizedBox(height: 12.h),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: Text(
-                      locale.tr('coin_packs_title'),
-                      style: AppTextStyles.rewardVipSectionTitle,
-                    ),
-                  ),
-                  SizedBox(height: 10.h),
-                  SizedBox(
-                    height: 106.h,
-                    child: ListView.separated(
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      scrollDirection: Axis.horizontal,
-                      physics: AppScreenUtils.adaptiveScrollPhysics,
-                      itemCount: coinPacks.length,
-                      separatorBuilder: (_, _) => SizedBox(width: 10.w),
-                      itemBuilder: (context, idx) {
-                        final cp = coinPacks[idx];
-                        return _CoinPackageTile(
-                          pack: cp,
-                          locale: locale,
-                          onTap: () => unawaited(
-                            _verifyPurchase(
-                              productId: cp.productId,
-                              title: cp.name,
-                              priceLabel: '${cp.price} ${cp.currency}',
-                              locale: locale,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-
-                // 5. Daily 7-Day Check-In Streak (Group F)
-                if (overview != null) ...[
-                  SizedBox(height: 24.h),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: _DailyCheckInCard(
-                      schedule: overview.checkin,
-                      isCheckingIn: rewardsState?.isCheckingIn ?? false,
-                      locale: locale,
-                      onCheckIn: () => _handleCheckIn(adBonus: false),
-                      onCheckInAdBonus: () => _handleCheckIn(adBonus: true),
-                    ),
-                  ),
-                ],
-
-                // 6. Daily Bonus Tasks (Group F)
-                if (overview != null && overview.tasks.isNotEmpty) ...[
-                  SizedBox(height: 22.h),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: Text(
-                      locale.tr('free_tasks_title'),
-                      style: AppTextStyles.rewardVipSectionTitle,
-                    ),
-                  ),
-                  SizedBox(height: 10.h),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: Column(
-                      children: overview.tasks.map((task) {
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 10.h),
-                          child: _RewardTaskTile(
-                            task: task,
-                            isClaiming: rewardsState?.isClaimingTask ?? false,
-                            locale: locale,
-                            onTap: () => unawaited(_handleTaskAction(task)),
-                          ),
-                        );
-                      }).toList(),
+                    child: Center(
+                      child: IapSubscriptionFooter(
+                        locale: locale,
+                        isPurchasing: accountState.isPurchasing,
+                        onRestore: () =>
+                            unawaited(_handleRestorePurchases(locale)),
+                      ),
                     ),
                   ),
                 ],
 
                 SizedBox(height: 22.h),
 
-                // 7. "VIP Exclusive" Header + "See All >"
+                // 4. "VIP Exclusive" Header + "See All >"
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16.w),
                   child: Row(
@@ -714,334 +498,6 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _CoinPackageTile extends StatelessWidget {
-  final CoinPackage pack;
-  final LocaleState locale;
-  final VoidCallback onTap;
-
-  const _CoinPackageTile({
-    required this.pack,
-    required this.locale,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 118.w,
-        padding: EdgeInsets.all(10.w),
-        decoration: BoxDecoration(
-          color: AppColors.rewardPlanCardBg,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(
-            color: pack.isPopular ? AppColors.primary : AppColors.borderSubtle,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.monetization_on_rounded,
-                    color: AppColors.gold, size: 16.sp),
-                SizedBox(width: 4.w),
-                Text(
-                  '${pack.coins}',
-                  style: AppTextStyles.bodyMedium.copyWith(color: AppColors.gold),
-                ),
-              ],
-            ),
-            if (pack.bonusCoins > 0) ...[
-              SizedBox(height: 2.h),
-              Text(
-                '+${pack.bonusCoins} ${locale.tr('bonus')}',
-                style: AppTextStyles.captionSmall.copyWith(
-                  color: AppColors.primaryBright,
-                ),
-              ),
-            ],
-            const Spacer(),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(12.r),
-              ),
-              child: Text(
-                '${pack.price.toStringAsFixed(2)} ${pack.currency}'.trim(),
-                style: AppTextStyles.captionSmall.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DailyCheckInCard extends StatelessWidget {
-  final CheckInSchedule schedule;
-  final bool isCheckingIn;
-  final LocaleState locale;
-  final VoidCallback onCheckIn;
-  final VoidCallback onCheckInAdBonus;
-
-  const _DailyCheckInCard({
-    required this.schedule,
-    required this.isCheckingIn,
-    required this.locale,
-    required this.onCheckIn,
-    required this.onCheckInAdBonus,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final days = schedule.schedule;
-    return Container(
-      padding: EdgeInsets.all(14.w),
-      decoration: BoxDecoration(
-        color: AppColors.rewardPlanCardBg,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.calendar_month_rounded,
-                  color: AppColors.gold, size: 20.sp),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  locale.tr('daily_checkin'),
-                  style: AppTextStyles.sectionTitle,
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                  color: AppColors.borderSubtle,
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: Text(
-                  '${locale.tr('streak_label')}: ${schedule.streak} ${locale.tr('days_label')}',
-                  style: AppTextStyles.captionSmall.copyWith(
-                    color: AppColors.gold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (days.isNotEmpty) ...[
-            SizedBox(height: 12.h),
-            Row(
-              children: days.take(7).map((d) {
-                final active = d.isToday && !d.isClaimed;
-                return Expanded(
-                  child: Container(
-                    margin: EdgeInsets.symmetric(horizontal: 2.5.w),
-                    padding: EdgeInsets.symmetric(vertical: 8.h),
-                    decoration: BoxDecoration(
-                      color: d.isClaimed
-                          ? AppColors.primary.withValues(alpha: 0.25)
-                          : (active
-                              ? AppColors.gold.withValues(alpha: 0.16)
-                              : AppColors.searchBarBg),
-                      borderRadius: BorderRadius.circular(8.r),
-                      border: Border.all(
-                        color: active
-                            ? AppColors.gold
-                            : (d.isClaimed
-                                ? AppColors.primary
-                                : AppColors.borderSubtle),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${locale.tr('day_short')}${d.day}',
-                          style: AppTextStyles.captionSmall,
-                        ),
-                        SizedBox(height: 3.h),
-                        Text(
-                          '+${d.reward}',
-                          style: AppTextStyles.captionSmall.copyWith(
-                            color: d.isClaimed
-                                ? AppColors.primaryBright
-                                : AppColors.gold,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: (!schedule.canCheckinToday || isCheckingIn)
-                      ? null
-                      : onCheckIn,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.textPrimary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                  ),
-                  child: Text(
-                    schedule.canCheckinToday
-                        ? locale.tr('checkin_now')
-                        : locale.tr('checked_in'),
-                    style: AppTextStyles.buttonMedium,
-                  ),
-                ),
-              ),
-              if (schedule.canCheckinToday) ...[
-                SizedBox(width: 8.w),
-                OutlinedButton.icon(
-                  onPressed: isCheckingIn ? null : onCheckInAdBonus,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.gold,
-                    side: const BorderSide(color: AppColors.gold),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                  ),
-                  icon: Icon(Icons.ondemand_video_rounded, size: 16.sp),
-                  label: Text('2x', style: AppTextStyles.buttonMedium),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RewardTaskTile extends StatelessWidget {
-  final RewardTask task;
-  final bool isClaiming;
-  final LocaleState locale;
-  final VoidCallback onTap;
-
-  const _RewardTaskTile({
-    required this.task,
-    required this.isClaiming,
-    required this.locale,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final canAct = !task.isCompleted &&
-        (task.canClaim || task.taskCode == 'watch_ad_bonus');
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-      decoration: BoxDecoration(
-        color: AppColors.profileTileBg,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36.w,
-            height: 36.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.gold.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              '+${task.rewardCoins}',
-              style: AppTextStyles.captionSmall.copyWith(
-                color: AppColors.gold,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: AppTextStyles.bodyMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (task.description.isNotEmpty) ...[
-                  SizedBox(height: 2.h),
-                  Text(
-                    task.description,
-                    style: AppTextStyles.captionSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-                if (task.target > 1) ...[
-                  SizedBox(height: 4.h),
-                  Text(
-                    '${task.progress}/${task.target}',
-                    style: AppTextStyles.captionSmall.copyWith(
-                      color: AppColors.textWhite54,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          SizedBox(width: 8.w),
-          ElevatedButton(
-            onPressed: (!canAct || isClaiming) ? null : onTap,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: task.isCompleted
-                  ? AppColors.borderSubtle
-                  : (canAct ? AppColors.primary : AppColors.searchBarBg),
-              foregroundColor: AppColors.textPrimary,
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-              minimumSize: Size.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.r),
-              ),
-            ),
-            child: Text(
-              task.isCompleted
-                  ? locale.tr('claimed_btn')
-                  : (task.canClaim
-                      ? locale.tr('claim_btn')
-                      : (task.taskCode == 'watch_ad_bonus'
-                          ? locale.tr('watch_now')
-                          : '${task.progress}/${task.target}')),
-              style: AppTextStyles.captionSmall.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

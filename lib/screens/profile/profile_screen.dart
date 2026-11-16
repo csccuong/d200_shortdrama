@@ -11,6 +11,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../fo/language/language_activity.dart';
+import '../../models/user_profile.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/bottom_native_all_ad.dart';
 import '../../widgets/drama_network_image.dart';
@@ -191,11 +192,29 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  String _formatVipSubtitle(
+    LocaleState locale,
+    WalletState wallet,
+    UserProfile? profile,
+  ) {
+    final isVip = wallet.isVip || (profile?.isVip ?? false);
+    final exp = wallet.vipExpiresAt ?? profile?.vipExpiresAt;
+    if (isVip && exp != null && exp.isNotEmpty) {
+      final shortDate = exp.length >= 10 ? exp.substring(0, 10) : exp;
+      return 'Expires $shortDate';
+    }
+    return locale.tr('vip_enjoy_benefits');
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
+    final legacyWallet = ref.watch(userWalletProvider);
+    final wallet = ref.watch(walletProvider);
     final profile = ref.watch(accountProvider).profile;
     final guest = ref.watch(guestIdentityProvider);
+    final isVip =
+        wallet.isVip || (profile?.isVip ?? false) || legacyWallet.isVip;
 
     final uid = (profile != null && profile.userUid.isNotEmpty)
         ? profile.userUid
@@ -288,13 +307,75 @@ class ProfileScreen extends ConsumerWidget {
                     ],
                   ),
 
-                  // TODO(IAP): Re-enable Golden "Unlock VIP" Banner Card when Rewards / IAP is enabled.
-                  // SizedBox(height: 22.h),
-                  // GestureDetector(
-                  //   onTap: () =>
-                  //       ref.read(shellTabIndexProvider.notifier).setTab(3),
-                  //   child: Container(...),
-                  // ),
+                  SizedBox(height: 22.h),
+
+                  // 3. Golden "Unlock VIP" Banner Card
+                  GestureDetector(
+                    onTap: () =>
+                        ref.read(shellTabIndexProvider.notifier).setTab(3),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 12.h,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: AppColors.profileVipGoldGradient,
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                      child: Row(
+                        children: [
+                          Transform.rotate(
+                            angle: -0.14,
+                            child: Image.asset(
+                              'assets/images/vip_crown.png',
+                              width: 44.w,
+                              height: 44.w,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isVip
+                                      ? locale.tr('vip_activated_title')
+                                      : locale.tr('unlock_vip_title'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.vipBannerTitle,
+                                ),
+                                SizedBox(height: 2.h),
+                                Text(
+                                  _formatVipSubtitle(locale, wallet, profile),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.vipBannerSubtitle,
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: 8.w),
+                          Container(
+                            height: 34.h,
+                            padding: EdgeInsets.symmetric(horizontal: 18.w),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.vipActivateBtnBg,
+                              borderRadius: BorderRadius.circular(18.r),
+                            ),
+                            child: Text(
+                              isVip
+                                  ? locale.tr('plan_active')
+                                  : locale.tr('activate_btn'),
+                              style: AppTextStyles.vipActivateButton,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
 
                   SizedBox(height: 18.h),
 

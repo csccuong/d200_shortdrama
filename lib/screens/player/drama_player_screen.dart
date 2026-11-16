@@ -45,6 +45,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
   bool _nativeFullOpen = false;
 
   final Set<int> _locallyUnlockedEpisodes = {};
+  final Set<int> _paywallEpisodes = {};
   bool _fullDramaUnlocked = false;
   final Set<String> _notifiedTasks = {};
 
@@ -263,10 +264,12 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
       ),
     );
     _nativeFullOpen = false;
+    unawaited(AppScreenUtils.applyImmersiveMode());
     if (mounted) setState(() {});
   }
 
   void _onVideoEnded(int totalEpisodes) {
+    if (_nativeFullOpen) return;
     ref.read(eventTrackerProvider).track(
       'episode_complete',
       dramaId: _resolvedDramaId,
@@ -287,6 +290,16 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(
+      userWalletProvider.select((s) => s.isVip),
+      (prev, isVip) {
+        if (isVip && prev != true) {
+          setState(() => _fullDramaUnlocked = true);
+          ref.invalidate(dramaDetailProvider(_resolvedDramaId));
+        }
+      },
+    );
+
     final locale = ref.watch(localeProvider);
     final detailAsync = ref.watch(dramaDetailProvider(_resolvedDramaId));
     final detailData = detailAsync.asData?.value;
@@ -386,10 +399,23 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                     _openEpisodeSheet(effectiveDrama, episodes, isVipUser),
                 showFullDramaButton: false,
                 requiredUnlockEpisode: requiredUnlockEp,
+                onPaywallVisibilityChanged: (ep, visible) {
+                  if (!mounted) return;
+                  final changed = visible
+                      ? _paywallEpisodes.add(ep)
+                      : _paywallEpisodes.remove(ep);
+                  if (changed && ep == _currentEpisode) {
+                    setState(() {});
+                  }
+                },
                 onEpisodeUnlocked: (unlockedEp, fullDrama) {
                   setState(() {
                     _locallyUnlockedEpisodes.add(unlockedEp);
-                    if (fullDrama) _fullDramaUnlocked = true;
+                    _paywallEpisodes.remove(unlockedEp);
+                    if (fullDrama) {
+                      _fullDramaUnlocked = true;
+                      _paywallEpisodes.clear();
+                    }
                   });
                   ref.invalidate(dramaDetailProvider(_resolvedDramaId));
                 },
@@ -440,24 +466,4 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                             style: AppTextStyles.playerHeaderTitle,
                           ),
                           Text(
-                            '${locale.tr('episode_prefix')} $_currentEpisode / $totalEpisodes',
-                            style: AppTextStyles.playerHeaderSubtitle,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          FloatingDramaNativeAd(
-            dramaSlug: _resolvedDramaId,
-            episodeNo: _currentEpisode,
-            hold: _nativeFullOpen,
-          ),
-        ],
-      ),
-    );
-  }
-}
+                            '$

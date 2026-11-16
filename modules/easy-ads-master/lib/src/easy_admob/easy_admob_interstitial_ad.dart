@@ -46,45 +46,69 @@ class EasyAdmobInterstitialAd extends EasyAdBase {
 
   @override
   Future<void> load() async {
-    if (_isAdLoaded) return;
+    if (_isAdLoaded || _isAdLoading) return;
+    final sanitizedId = adUnitId.trim();
+    if (sanitizedId.isEmpty || sanitizedId == 'null') {
+      _interstitialAd = null;
+      _isAdLoaded = false;
+      _isAdLoading = false;
+      _isAdLoadedFailed = true;
+      onAdFailedToLoad?.call(
+          adNetwork, adUnitType, null, 'Empty or invalid adUnitId');
+      return;
+    }
+
     _isAdLoading = true;
-    await InterstitialAd.load(
-        adUnitId: adUnitId,
-        request: _adRequest,
-        adLoadCallback: InterstitialAdLoadCallback(
-          onAdLoaded: (InterstitialAd ad) {
-            _interstitialAd = ad;
-            _interstitialAd?.onPaidEvent =
-                (ad, valueMicros, precision, currencyCode) {
-              onPaidEvent?.call(
-                adNetwork,
-                adUnitType,
-                ad,
-                valueMicros,
-                precision,
-                currencyCode,
-              );
-            };
-            _isAdLoaded = true;
-            _isAdLoading = false;
-            _isAdLoadedFailed = false;
-            onAdLoaded?.call(adNetwork, adUnitType, ad);
-          },
-          onAdFailedToLoad: (LoadAdError error) {
-            _interstitialAd = null;
-            _isAdLoaded = false;
-            _isAdLoading = false;
-            _isAdLoadedFailed = true;
-            onAdFailedToLoad?.call(
-                adNetwork, adUnitType, error, error.toString());
-          },
-        ));
+    _isAdLoadedFailed = false;
+    try {
+      await InterstitialAd.load(
+          adUnitId: sanitizedId,
+          request: _adRequest,
+          adLoadCallback: InterstitialAdLoadCallback(
+            onAdLoaded: (InterstitialAd ad) {
+              _interstitialAd = ad;
+              _interstitialAd?.onPaidEvent =
+                  (ad, valueMicros, precision, currencyCode) {
+                onPaidEvent?.call(
+                  adNetwork,
+                  adUnitType,
+                  ad,
+                  valueMicros,
+                  precision,
+                  currencyCode,
+                );
+              };
+              _isAdLoaded = true;
+              _isAdLoading = false;
+              _isAdLoadedFailed = false;
+              onAdLoaded?.call(adNetwork, adUnitType, ad);
+            },
+            onAdFailedToLoad: (LoadAdError error) {
+              _interstitialAd = null;
+              _isAdLoaded = false;
+              _isAdLoading = false;
+              _isAdLoadedFailed = true;
+              onAdFailedToLoad?.call(
+                  adNetwork, adUnitType, error, error.toString());
+            },
+          ));
+    } catch (e) {
+      _interstitialAd = null;
+      _isAdLoaded = false;
+      _isAdLoading = false;
+      _isAdLoadedFailed = true;
+      onAdFailedToLoad?.call(adNetwork, adUnitType, null, e.toString());
+    }
   }
 
   @override
   show() {
     final ad = _interstitialAd;
-    if (ad == null) return;
+    if (ad == null) {
+      onAdFailedToShow?.call(
+          adNetwork, adUnitType, null, 'Interstitial ad is not ready');
+      return;
+    }
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (InterstitialAd ad) {

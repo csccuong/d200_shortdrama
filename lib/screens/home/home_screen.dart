@@ -2,13 +2,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
+import '../../core/constants/app_constants.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
 import '../../models/home_response.dart';
 import '../../models/taxonomy_models.dart';
 import '../../providers/app_providers.dart';
 import '../../services/api/home_api_service.dart';
+import '../../services/firebase_remote_config_service.dart';
 import '../../widgets/drama_network_image.dart';
+import '../../widgets/premium_upgrade_dialog.dart';
 import '../player/drama_player_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -26,6 +29,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Timer? _searchDebounce;
   bool _didBootstrap = false;
+  static bool _didShowHomePremiumPopup = false;
 
   String _selectedCategory = 'all';
   String _selectedTag = '';
@@ -75,7 +79,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               .fetchHome(ref.read(localeProvider).appLanguage),
         );
       }
+      if (sessionReady) {
+        _maybeShowHomePremiumPopup();
+      }
     });
+  }
+
+  void _maybeShowHomePremiumPopup() {
+    if (_didShowHomePremiumPopup || !mounted || AppConstants.isFlutterTest) {
+      return;
+    }
+    final isVip = AppConstants.isPremiumUser.value ||
+        ref.read(walletProvider).isVip ||
+        ref.read(userWalletProvider).isVip;
+    if (isVip) return;
+    if (!FirebaseRemoteConfigService.getBoolConfigByKey(
+      FirebaseRemoteConfigService.show_activity_iap,
+      defaultValue: true,
+    )) {
+      return;
+    }
+    if (ref.read(shellTabIndexProvider) != 0) return;
+
+    _didShowHomePremiumPopup = true;
+    unawaited(PremiumUpgradeDialog.show(context));
   }
 
   @override
@@ -327,6 +354,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (_selectedCategory != 'all' && _categoryDramas.isEmpty) {
           unawaited(_loadCategoryDramas(reset: true));
         }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _maybeShowHomePremiumPopup();
+        });
       }
     });
 

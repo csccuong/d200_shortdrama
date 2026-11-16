@@ -4,6 +4,8 @@ import 'package:easy_ads_flutter/easy_ads_flutter.dart';
 import 'package:easy_ads_flutter/src/utils/easy_loading_splash.dart';
 import 'package:flutter/material.dart';
 
+import 'easy_fullscreen_ad_loading_box.dart';
+
 class EasyAppOpenAdWithId extends StatefulWidget {
   final AdNetwork adNetwork;
   final String adId;
@@ -40,13 +42,15 @@ class _EasyAppOpenAdWithIdState extends State<EasyAppOpenAdWithId>
     WidgetsBinding.instance.addObserver(this);
     EasyAds.instance.setFullscreenAdShowing(true);
 
-    // Create and load app open ad with specific ID
-    _loadAndShowAppOpenAd();
-
     _streamSubscription = EasyAds.instance.onEvent.listen((event) {
       final resolvedId = EasyAds.instance.resolveAdUnitId(widget.adId);
-      if (event.adUnitType == AdUnitType.appOpen &&
-          (event.adUnitId == widget.adId || event.adUnitId == resolvedId)) {
+      if (isMatchingFullscreenAdEvent(
+        event,
+        expectedType: AdUnitType.appOpen,
+        rawAdId: widget.adId,
+        resolvedId: resolvedId,
+        currentAdUnitId: _currentAd?.adUnitId,
+      )) {
         switch (event.type) {
           case AdEventType.adLoaded:
             // Only process if ad hasn't been shown yet
@@ -80,6 +84,9 @@ class _EasyAppOpenAdWithIdState extends State<EasyAppOpenAdWithId>
         }
       }
     });
+
+    // Create and load app open ad with specific ID
+    _loadAndShowAppOpenAd();
   }
 
   Future<void> _loadAndShowAppOpenAd() async {

@@ -48,7 +48,7 @@ Future<void> main() async {
         navigatorKey: inject<AppNavigationService>().navigatorKey,
       );
       await AppScreenUtils.configureSystemUI();
-      runApp(const BobDramaApp());
+      runApp(const DramaApp());
     },
     (Object error, StackTrace stack) {
       debugPrint('Uncaught zone error: $error');
@@ -56,10 +56,10 @@ Future<void> main() async {
   );
 }
 
-class BobDramaApp extends StatelessWidget {
+class DramaApp extends StatelessWidget {
   final Widget? initialHome;
 
-  const BobDramaApp({super.key, this.initialHome});
+  const DramaApp({super.key, this.initialHome});
 
   @override
   Widget build(BuildContext context) {
@@ -76,7 +76,7 @@ class BobDramaApp extends StatelessWidget {
           return AnnotatedRegion<SystemUiOverlayStyle>(
             value: AppScreenUtils.systemUiOverlayStyle,
             child: MaterialApp(
-              key: const ValueKey('riverpod_material_app_5tabs'),
+              key: const ValueKey('riverpod_material_app_5tabs') ,
               navigatorKey: navService.navigatorKey,
               navigatorObservers: [AppRouteObserver()],
               title: 'Dramota: Short & Dramas Reel',

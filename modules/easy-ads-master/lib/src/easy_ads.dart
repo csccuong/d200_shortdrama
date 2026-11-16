@@ -69,6 +69,34 @@ class EasyAds {
 
   static String Function(String adId)? adIdResolver;
 
+  /// Optional placement-level enablement check (for example, Firebase Remote
+  /// Config flags). Returning `false` skips loading/waiting overlays immediately.
+  static bool Function(AdUnitType adUnitType, String? adIdName, String adId)?
+      adEnabledChecker;
+
+  bool isAdUnitValid(String adId) {
+    final trimmed = adId.trim();
+    if (trimmed.isEmpty || trimmed == 'null') return false;
+    final resolved = resolveAdUnitId(trimmed).trim();
+    return resolved.isNotEmpty && resolved != 'null';
+  }
+
+  bool isAdEnabled({
+    required AdUnitType adUnitType,
+    required String adId,
+    String? adIdName,
+  }) {
+    if (_isPremiumUser) return false;
+    if (!isAdUnitValid(adId)) return false;
+    final resolvedName =
+        adIdName ?? (adId.startsWith('ca-app-pub-') ? null : adId);
+    if (adEnabledChecker != null &&
+        !adEnabledChecker!(adUnitType, resolvedName, adId)) {
+      return false;
+    }
+    return true;
+  }
+
   /// True value when there is exist an Ad and false otherwise.
   bool _isFullscreenAdShowing = false;
 
@@ -540,7 +568,10 @@ class EasyAds {
     AdNetwork adNetwork = AdNetwork.admob,
     bool immersiveModeEnabled = true,
   }) async {
-    if (_isPremiumUser || adId.isEmpty) return;
+    if (!isAdEnabled(
+        adUnitType: AdUnitType.interstitial, adId: adId, adIdName: adIdName)) {
+      return;
+    }
     final key = adIdName ?? (adId.startsWith('ca-app-pub-') ? adId : adId);
 
     if (_interstitialAdCache.containsKey(key)) {
@@ -572,7 +603,7 @@ class EasyAds {
     AdNetwork adNetwork = AdNetwork.admob,
     bool immersiveModeEnabled = true,
   }) {
-    if (adId.isEmpty) return null;
+    if (!isAdUnitValid(adId)) return null;
     final key = adIdName ?? (adId.startsWith('ca-app-pub-') ? adId : adId);
 
     if (_interstitialAdCache.containsKey(key)) {
@@ -627,7 +658,10 @@ class EasyAds {
     AdNetwork adNetwork = AdNetwork.admob,
     bool immersiveModeEnabled = true,
   }) async {
-    if (_isPremiumUser || adId.isEmpty) return;
+    if (!isAdEnabled(
+        adUnitType: AdUnitType.rewarded, adId: adId, adIdName: adIdName)) {
+      return;
+    }
     final key = adIdName ?? (adId.startsWith('ca-app-pub-') ? adId : adId);
 
     if (_rewardAdCache.containsKey(key)) {
@@ -659,7 +693,7 @@ class EasyAds {
     AdNetwork adNetwork = AdNetwork.admob,
     bool immersiveModeEnabled = true,
   }) {
-    if (adId.isEmpty) return null;
+    if (!isAdUnitValid(adId)) return null;
     final key = adIdName ?? (adId.startsWith('ca-app-pub-') ? adId : adId);
 
     if (_rewardAdCache.containsKey(key)) {
@@ -976,6 +1010,15 @@ class EasyAds {
     return isLoaded;
   }
 
+  bool isAppOpenAdLoadFailed({AdNetwork adNetwork = AdNetwork.any}) {
+    if (_appOpenAds.isEmpty) return true;
+    final matching = _appOpenAds.where(
+      (e) => adNetwork == AdNetwork.any || adNetwork == e.adNetwork,
+    );
+    if (matching.isEmpty) return true;
+    return matching.every((e) => e.isAdLoadedFailed);
+  }
+
   /// This will load app open ads.
   /// If a particular ad is already loaded, it will not load it again.
   /// Also you do not have to call this method everytime. Ad is automatically loaded after being displayed.
@@ -984,7 +1027,12 @@ class EasyAds {
   void loadAppOpenAd({AdNetwork adNetwork = AdNetwork.any}) {
     if (_isPremiumUser) return;
     for (final e in _appOpenAds) {
-      if (adNetwork == AdNetwork.any || adNetwork == e.adNetwork) {
+      if ((adNetwork == AdNetwork.any || adNetwork == e.adNetwork) &&
+          isAdEnabled(
+            adUnitType: AdUnitType.appOpen,
+            adId: e.adUnitId,
+            adIdName: e.adIdName,
+          )) {
         e.load();
       }
     }
@@ -1016,7 +1064,12 @@ class EasyAds {
     Function()? adDissmissed,
     Function()? onFailed,
   }) {
-    if (_isPremiumUser) {
+    final resolvedName =
+        adIdName ?? (adId.startsWith('ca-app-pub-') ? null : adId);
+    if (!isAdEnabled(
+        adUnitType: AdUnitType.interstitial,
+        adId: adId,
+        adIdName: resolvedName)) {
       adDissmissed?.call();
       return;
     }
@@ -1027,38 +1080,51 @@ class EasyAds {
       adDissmissed?.call();
       return;
     }
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        fullscreenDialog: true,
-        opaque: false,
-        barrierColor: Colors.black54,
-        pageBuilder: (context, animation, secondaryAnimation) => EasyInterstitialAd(
-          adNetwork: adNetwork,
-          adId: adId,
-          adIdName: adIdName ?? (adId.startsWith('ca-app-pub-') ? null : adId),
-          onShowed: onShowed,
-          onFailed: onFailed,
-          adDismissed: adDissmissed,
+    _isFullscreenAdShowing = true;
+    try {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          fullscreenDialog: true,
+          opaque: false,
+          barrierColor: Colors.black54,
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              EasyInterstitialAd(
+            adNetwork: adNetwork,
+            adId: adId,
+            adIdName: resolvedName,
+            onShowed: onShowed,
+            onFailed: onFailed,
+            adDismissed: adDissmissed,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
         ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
-        },
-      ),
-    );
+      );
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      onFailed?.call();
+    }
   }
 
   void showInterstitialAdSplash(
     BuildContext context, {
     AdNetwork adNetwork = AdNetwork.admob,
     required String adId,
+    String? adIdName,
     Function()? onShowed,
     Function()? adDissmissed,
     Function()? onFailed,
   }) {
-    if (_isPremiumUser) {
+    final resolvedName =
+        adIdName ?? (adId.startsWith('ca-app-pub-') ? null : adId);
+    if (!isAdEnabled(
+        adUnitType: AdUnitType.interstitial,
+        adId: adId,
+        adIdName: resolvedName)) {
       adDissmissed?.call();
       return;
     }
@@ -1069,19 +1135,25 @@ class EasyAds {
       adDissmissed?.call();
       return;
     }
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        opaque: false,
-        pageBuilder: (context, _, __) => EasyInterstitialAdSplash(
-          adNetwork: adNetwork,
-          adId: adId,
-          onShowed: onShowed,
-          onFailed: onFailed,
-          adDismissed: adDissmissed,
+    _isFullscreenAdShowing = true;
+    try {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          opaque: false,
+          pageBuilder: (context, _, __) => EasyInterstitialAdSplash(
+            adNetwork: adNetwork,
+            adId: adId,
+            onShowed: onShowed,
+            onFailed: onFailed,
+            adDismissed: adDissmissed,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      onFailed?.call();
+    }
   }
 
   void showInterstitialAdSplashWith3Id(
@@ -1098,6 +1170,13 @@ class EasyAds {
       adDissmissed?.call();
       return;
     }
+    final hasAnyValidId = isAdUnitValid(interSplashHigh) ||
+        isAdUnitValid(interSplashMedium) ||
+        isAdUnitValid(interSplashAll);
+    if (!hasAnyValidId) {
+      adDissmissed?.call();
+      return;
+    }
     if (_isFullscreenAdShowing) {
       return;
     }
@@ -1105,21 +1184,27 @@ class EasyAds {
       adDissmissed?.call();
       return;
     }
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        opaque: false,
-        pageBuilder: (context, _, __) => EasyInterstitialAdSplashWith3Id(
-          adNetwork: adNetwork,
-          adIdHigh: interSplashHigh,
-          adIdMedium: interSplashMedium,
-          adIdAll: interSplashAll,
-          onShowed: onShowed,
-          onFailed: onFailed,
-          adDismissed: adDissmissed,
+    _isFullscreenAdShowing = true;
+    try {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          opaque: false,
+          pageBuilder: (context, _, __) => EasyInterstitialAdSplashWith3Id(
+            adNetwork: adNetwork,
+            adIdHigh: interSplashHigh,
+            adIdMedium: interSplashMedium,
+            adIdAll: interSplashAll,
+            onShowed: onShowed,
+            onFailed: onFailed,
+            adDismissed: adDissmissed,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      onFailed?.call();
+    }
   }
 
   void showInterstitialAdSplashWith2Id(
@@ -1133,7 +1218,21 @@ class EasyAds {
     Function()? adDissmissed,
     Function()? onFailed,
   }) {
-    if (_isPremiumUser) {
+    final highName = interSplashHighName ??
+        (interSplashHigh.startsWith('ca-app-pub-') ? null : interSplashHigh);
+    final allName = interSplashAllName ??
+        (interSplashAll.startsWith('ca-app-pub-') ? null : interSplashAll);
+    final highEnabled = isAdEnabled(
+      adUnitType: AdUnitType.interstitial,
+      adId: interSplashHigh,
+      adIdName: highName,
+    );
+    final allEnabled = isAdEnabled(
+      adUnitType: AdUnitType.interstitial,
+      adId: interSplashAll,
+      adIdName: allName,
+    );
+    if (!highEnabled && !allEnabled) {
       adDissmissed?.call();
       return;
     }
@@ -1144,59 +1243,84 @@ class EasyAds {
       adDissmissed?.call();
       return;
     }
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        opaque: false,
-        pageBuilder: (context, _, __) => EasyInterstitialAdSplashWith2Id(
-          adNetwork: adNetwork,
-          adIdHigh: interSplashHigh,
-          adIdAll: interSplashAll,
-          adIdNameHigh: interSplashHighName ?? (interSplashHigh.startsWith('ca-app-pub-') ? null : interSplashHigh),
-          adIdNameAll: interSplashAllName ?? (interSplashAll.startsWith('ca-app-pub-') ? null : interSplashAll),
-          onShowed: onShowed,
-          onFailed: onFailed,
-          adDismissed: adDissmissed,
+    _isFullscreenAdShowing = true;
+    try {
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          opaque: false,
+          pageBuilder: (context, _, __) => EasyInterstitialAdSplashWith2Id(
+            adNetwork: adNetwork,
+            adIdHigh: interSplashHigh,
+            adIdAll: interSplashAll,
+            adIdNameHigh: highName,
+            adIdNameAll: allName,
+            onShowed: onShowed,
+            onFailed: onFailed,
+            adDismissed: adDissmissed,
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      onFailed?.call();
+    }
   }
 
-  void showRewardAd(
+  bool showRewardAd(
     BuildContext context, {
     AdNetwork adNetwork = AdNetwork.admob,
     required String adId,
+    String? adIdName,
     Function()? onShowed,
     Function()? adDissmissed,
     Function()? onFailed,
   }) {
     if (_isPremiumUser) {
       adDissmissed?.call();
-      return;
+      return false;
+    }
+    final resolvedName =
+        adIdName ?? (adId.startsWith('ca-app-pub-') ? null : adId);
+    if (!isAdEnabled(
+        adUnitType: AdUnitType.rewarded,
+        adId: adId,
+        adIdName: resolvedName)) {
+      onFailed?.call();
+      return false;
     }
     if (_isFullscreenAdShowing) {
-      return;
+      return false;
     }
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        fullscreenDialog: true,
-        opaque: false,
-        barrierColor: Colors.black54,
-        pageBuilder: (context, animation, secondaryAnimation) => EasyRewardAd(
-          adNetwork: adNetwork,
-          adId: adId,
-          onShowed: onShowed,
-          onFailed: onFailed,
-          adDismissed: adDissmissed,
+    _isFullscreenAdShowing = true;
+    try {
+      Navigator.of(context).push(
+        PageRouteBuilder(
+          fullscreenDialog: true,
+          opaque: false,
+          barrierColor: Colors.black54,
+          pageBuilder: (context, animation, secondaryAnimation) => EasyRewardAd(
+            adNetwork: adNetwork,
+            adId: adId,
+            adIdName: resolvedName,
+            onShowed: onShowed,
+            onFailed: onFailed,
+            adDismissed: adDissmissed,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: child,
+            );
+          },
         ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
-        },
-      ),
-    );
+      );
+      return true;
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      onFailed?.call();
+      return false;
+    }
   }
 
   void showSplashAdWithInterstitialAndAppOpen(
@@ -1239,9 +1363,31 @@ class EasyAds {
       callback?.call();
       return;
     }
+    final matchingAd = _appOpenAds.firstWhereOrNull(
+      (e) => adNetwork == AdNetwork.any || adNetwork == e.adNetwork,
+    );
+    if (matchingAd == null ||
+        !isAdEnabled(
+          adUnitType: AdUnitType.appOpen,
+          adId: matchingAd.adUnitId,
+          adIdName: matchingAd.adIdName,
+        )) {
+      callback?.call();
+      return;
+    }
     if (_isFullscreenAdShowing) {
       return;
     }
+    _isFullscreenAdShowing = true;
+    try {
+      _pushAppOpenRoute(context, adNetwork);
+    } catch (_) {
+      _isFullscreenAdShowing = false;
+      callback?.call();
+    }
+  }
+
+  void _pushAppOpenRoute(BuildContext context, AdNetwork adNetwork) {
     Navigator.of(context).push(
       PageRouteBuilder(
         fullscreenDialog: true,

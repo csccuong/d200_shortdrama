@@ -226,6 +226,9 @@ const LanguagePack viLanguagePack = LanguagePack(
     'reward_save_30': 'Tiết kiệm 30%',
     'reward_continue_btn': 'Tiếp tục',
     'reward_vip_section': 'Độc quyền VIP',
+    'iap_cancel_anytime':
+        'Gói tự động gia hạn. Hủy bất kỳ lúc nào trên Google Play Store.',
+    'iap_restore_purchases': 'Khôi phục giao dịch',
     'player_save_short': 'Lưu',
     'player_ep_badge': 'Tập',
     'player_eps_short': 'Tập',

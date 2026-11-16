@@ -146,6 +146,11 @@ class SplashController extends ChangeNotifier {
     }
 
     // Proceed with existing navigation flow
+    if (context.mounted && !_isDisposed && !AppConstants.isFlutterTest) {
+      await FirebaseRemoteConfigService.waitForInitialFetch(
+        timeout: const Duration(seconds: 2),
+      );
+    }
     if (context.mounted && !_isDisposed) {
       _showSplashAdThenNavigate(context, onFinished: onFinished);
     }
@@ -254,16 +259,25 @@ class SplashController extends ChangeNotifier {
     BuildContext context, {
     VoidCallback? onFinished,
   }) {
-    final showInterSplash = AppConstants.isMobilePlatform &&
-        (FirebaseRemoteConfigService.getBoolConfigByKey(
-              FirebaseRemoteConfigService.inter_splash,
-            ) ||
-            FirebaseRemoteConfigService.getBoolConfigByKey(
-              FirebaseRemoteConfigService.inter_splash_high,
-            )) &&
-        !AppConstants.isPremiumUser.value;
+    final interSplashEnabled = FirebaseRemoteConfigService.interSplashEnabled;
+    final interSplashHighEnabled =
+        FirebaseRemoteConfigService.interSplashHighEnabled;
+    final canAttemptAd = AppConstants.isMobilePlatform &&
+        !AppConstants.isPremiumUser.value &&
+        (interSplashEnabled || interSplashHighEnabled);
 
-    if (showInterSplash) {
+    void finish() {
+      if (context.mounted) {
+        goNextScreen(context, onFinished: onFinished);
+      }
+    }
+
+    if (!canAttemptAd) {
+      finish();
+      return;
+    }
+
+    if (interSplashHighEnabled && interSplashEnabled) {
       EasyAds.instance.showInterstitialAdSplashWith2Id(
         context,
         interSplashHigh: MyAdIdName.interSplashHigh.getId,
@@ -271,19 +285,21 @@ class SplashController extends ChangeNotifier {
         interSplashHighName: MyAdIdName.interSplashHigh,
         interSplashAllName: MyAdIdName.interSplash,
         onShowed: () {},
-        adDissmissed: () {
-          if (context.mounted) {
-            goNextScreen(context, onFinished: onFinished);
-          }
-        },
-        onFailed: () {
-          if (context.mounted) {
-            goNextScreen(context, onFinished: onFinished);
-          }
-        },
+        adDissmissed: finish,
+        onFailed: finish,
       );
     } else {
-      goNextScreen(context, onFinished: onFinished);
+      final adIdName = interSplashHighEnabled
+          ? MyAdIdName.interSplashHigh
+          : MyAdIdName.interSplash;
+      EasyAds.instance.showInterstitialAdSplash(
+        context,
+        adId: adIdName.getId,
+        adIdName: adIdName,
+        onShowed: () {},
+        adDissmissed: finish,
+        onFailed: finish,
+      );
     }
   }
 

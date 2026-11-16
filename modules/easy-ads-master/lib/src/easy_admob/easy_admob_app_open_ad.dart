@@ -48,44 +48,66 @@ class EasyAdmobAppOpenAd extends EasyAdBase {
       dispose();
     }
 
-    if (isAdLoaded) {
+    if (isAdLoaded || isAdLoading) {
       return;
     }
+    final sanitizedId = adUnitId.trim();
+    if (sanitizedId.isEmpty || sanitizedId == 'null') {
+      _appOpenAd = null;
+      _isAdLoaded = false;
+      _isAdLoading = false;
+      _isAdLoadedFailed = true;
+      onAdFailedToLoad?.call(
+          adNetwork, adUnitType, null, 'Empty or invalid adUnitId');
+      return;
+    }
+
     _isAdLoading = true;
+    _isAdLoadedFailed = false;
     _loadTime = DateTime.now(); // Track load time
 
-    return AppOpenAd.load(
-      adUnitId: adUnitId,
-      request: _adRequest,
-      adLoadCallback: AppOpenAdLoadCallback(
-        onAdLoaded: (AppOpenAd ad) {
-          _appOpenAd = ad;
-          _appOpenAd?.onPaidEvent = (ad, valueMicros, precision, currencyCode) {
-            onPaidEvent?.call(
-              adNetwork,
-              adUnitType,
-              ad,
-              valueMicros,
-              precision,
-              currencyCode,
-            );
-          };
-          _isAdLoaded = true;
-          _isAdLoading = false;
-          _isAdLoadedFailed = false;
-          onAdLoaded?.call(adNetwork, adUnitType, ad);
-        },
-        onAdFailedToLoad: (LoadAdError error) {
-          _appOpenAd = null;
-          _isAdLoaded = false;
-          _isAdLoading = false;
-          _isAdLoadedFailed = true;
-          _loadTime = null;
-          onAdFailedToLoad?.call(
-              adNetwork, adUnitType, error, error.toString());
-        },
-      ),
-    );
+    try {
+      await AppOpenAd.load(
+        adUnitId: sanitizedId,
+        request: _adRequest,
+        adLoadCallback: AppOpenAdLoadCallback(
+          onAdLoaded: (AppOpenAd ad) {
+            _appOpenAd = ad;
+            _appOpenAd?.onPaidEvent =
+                (ad, valueMicros, precision, currencyCode) {
+              onPaidEvent?.call(
+                adNetwork,
+                adUnitType,
+                ad,
+                valueMicros,
+                precision,
+                currencyCode,
+              );
+            };
+            _isAdLoaded = true;
+            _isAdLoading = false;
+            _isAdLoadedFailed = false;
+            onAdLoaded?.call(adNetwork, adUnitType, ad);
+          },
+          onAdFailedToLoad: (LoadAdError error) {
+            _appOpenAd = null;
+            _isAdLoaded = false;
+            _isAdLoading = false;
+            _isAdLoadedFailed = true;
+            _loadTime = null;
+            onAdFailedToLoad?.call(
+                adNetwork, adUnitType, error, error.toString());
+          },
+        ),
+      );
+    } catch (e) {
+      _appOpenAd = null;
+      _isAdLoaded = false;
+      _isAdLoading = false;
+      _isAdLoadedFailed = true;
+      _loadTime = null;
+      onAdFailedToLoad?.call(adNetwork, adUnitType, null, e.toString());
+    }
   }
 
   @override

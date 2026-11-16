@@ -22,74 +22,122 @@ class EasyEventController {
   }
 
   void setupEvents(EasyAdBase ad) {
-    ad.onAdLoaded = _onAdLoadedMethod;
-    ad.onAdFailedToLoad = _onAdFailedToLoadMethod;
-    ad.onAdShowed = _onAdShowedMethod;
-    ad.onAdFailedToShow = _onAdFailedToShowMethod;
-    ad.onAdDismissed = _onAdDismissedMethod;
-    ad.onEarnedReward = _onEarnedRewardMethod;
+    ad.onAdLoaded = (adNetwork, adUnitType, data) => _onAdLoadedMethod(
+          adNetwork,
+          adUnitType,
+          data,
+          adUnitId: ad.adUnitId,
+        );
+    ad.onAdFailedToLoad = (adNetwork, adUnitType, data, errorMessage) =>
+        _onAdFailedToLoadMethod(
+          adNetwork,
+          adUnitType,
+          data,
+          errorMessage,
+          adUnitId: ad.adUnitId,
+        );
+    ad.onAdShowed = (adNetwork, adUnitType, data) => _onAdShowedMethod(
+          adNetwork,
+          adUnitType,
+          data,
+          adUnitId: ad.adUnitId,
+        );
+    ad.onAdFailedToShow = (adNetwork, adUnitType, data, errorMessage) =>
+        _onAdFailedToShowMethod(
+          adNetwork,
+          adUnitType,
+          data,
+          errorMessage,
+          adUnitId: ad.adUnitId,
+        );
+    ad.onAdDismissed = (adNetwork, adUnitType, data) => _onAdDismissedMethod(
+          adNetwork,
+          adUnitType,
+          data,
+          adUnitId: ad.adUnitId,
+        );
+    ad.onEarnedReward = (adNetwork, adUnitType, rewardType, rewardAmount) =>
+        _onEarnedRewardMethod(
+          adNetwork,
+          adUnitType,
+          rewardType,
+          rewardAmount,
+          adUnitId: ad.adUnitId,
+        );
     ad.onPaidEvent = _onPaidEventMethod;
     ad.onLogAdImpression = _onAdImpressionEventMethod;
   }
 
   void _onAdLoadedMethod(
-      AdNetwork adNetwork, AdUnitType adUnitType, Object? data) {
+      AdNetwork adNetwork, AdUnitType adUnitType, Object? data,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.adLoaded,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: data,
     ));
   }
 
   void _onAdShowedMethod(
-      AdNetwork adNetwork, AdUnitType adUnitType, Object? data) {
+      AdNetwork adNetwork, AdUnitType adUnitType, Object? data,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.adShowed,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: data,
     ));
   }
 
   void _onAdFailedToLoadMethod(AdNetwork adNetwork, AdUnitType adUnitType,
-      Object? data, String errorMessage) {
+      Object? data, String errorMessage,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.adFailedToLoad,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: data,
       error: errorMessage,
     ));
   }
 
   void _onAdFailedToShowMethod(AdNetwork adNetwork, AdUnitType adUnitType,
-      Object? data, String errorMessage) {
+      Object? data, String errorMessage,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.adFailedToShow,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: data,
       error: errorMessage,
     ));
   }
 
   void _onAdDismissedMethod(
-      AdNetwork adNetwork, AdUnitType adUnitType, Object? data) {
+      AdNetwork adNetwork, AdUnitType adUnitType, Object? data,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.adDismissed,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: data,
     ));
   }
 
   void _onEarnedRewardMethod(AdNetwork adNetwork, AdUnitType adUnitType,
-      String? rewardType, num? rewardAmount) {
+      String? rewardType, num? rewardAmount,
+      {String? adUnitId}) {
     _onEventController.add(AdEvent(
       type: AdEventType.earnedReward,
       adNetwork: adNetwork,
       adUnitType: adUnitType,
+      adUnitId: adUnitId,
       data: {'rewardType': rewardType, 'rewardAmount': rewardAmount},
     ));
   }

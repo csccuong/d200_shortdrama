@@ -1,3 +1,5 @@
+import 'stream_bundle.dart';
+
 /// Subtitle track info for video playback.
 class SubtitleTrack {
   final String language;
@@ -54,9 +56,15 @@ class PlayResponse {
   final int durationSec;
   final String accessReason;
   final String videoUrl;
-  final int streamExpiresIn;
+  final int expiresInSec;
+  final int? expiresAt;
+  final DateTime expireAt;
   final List<SubtitleTrack> subtitles;
   final NextEpisodeInfo? nextEpisode;
+
+  int get streamExpiresIn => expiresInSec;
+
+  bool get isStreamExpired => DateTime.now().isAfter(expireAt);
 
   PlayResponse({
     required this.dramaId,
@@ -64,10 +72,23 @@ class PlayResponse {
     this.durationSec = 0,
     this.accessReason = '',
     this.videoUrl = '',
-    this.streamExpiresIn = 900,
+    int? expiresInSec,
+    int streamExpiresIn = StreamBundle.defaultTtlSec,
+    this.expiresAt,
+    DateTime? expireAt,
     this.subtitles = const [],
     this.nextEpisode,
-  });
+  })  : expiresInSec = expiresInSec ?? streamExpiresIn,
+        expireAt = expireAt ??
+            StreamBundle.computeSafeExpireAt(expiresInSec ?? streamExpiresIn);
+
+  StreamBundle toStreamBundle() => StreamBundle(
+        videoUrl: videoUrl,
+        subtitles: subtitles,
+        expiresInSec: expiresInSec,
+        expiresAt: expiresAt,
+        expireAt: expireAt,
+      );
 
   factory PlayResponse.fromJson(Map<String, dynamic> json) {
     final rawNext = json['next_episode'];
@@ -78,13 +99,20 @@ class PlayResponse {
       nextEp = NextEpisodeInfo(episodeNumber: rawNext.toInt());
     }
 
+    final ttl = StreamBundle.parseTtlSec(
+      json,
+      defaultTtlSec: StreamBundle.defaultTtlSec,
+    );
+
     return PlayResponse(
       dramaId: json['drama_id']?.toString() ?? '',
       episodeNumber: (json['episode_number'] as num?)?.toInt() ?? 0,
       durationSec: (json['duration_sec'] as num?)?.toInt() ?? 0,
       accessReason: json['access_reason']?.toString() ?? '',
       videoUrl: json['video_url']?.toString() ?? '',
-      streamExpiresIn: (json['stream_expires_in'] as num?)?.toInt() ?? 900,
+      expiresInSec: ttl,
+      expiresAt: StreamBundle.parseExpiresAtUnix(json),
+      expireAt: StreamBundle.computeSafeExpireAt(ttl),
       subtitles: (json['subtitles'] as List<dynamic>?)
               ?.whereType<Map<dynamic, dynamic>>()
               .map(
@@ -181,7 +209,12 @@ class UnlockResponse {
   final int totalCoins;
   final int adUnlocksRemainingToday;
   final String videoUrl;
+  final int expiresInSec;
+  final int? expiresAt;
+  final DateTime expireAt;
   final List<SubtitleTrack> subtitles;
+
+  bool get isStreamExpired => DateTime.now().isAfter(expireAt);
 
   UnlockResponse({
     this.coinBalance = 0,
@@ -189,10 +222,25 @@ class UnlockResponse {
     this.totalCoins = 0,
     this.adUnlocksRemainingToday = 0,
     this.videoUrl = '',
+    this.expiresInSec = StreamBundle.defaultTtlSec,
+    this.expiresAt,
+    DateTime? expireAt,
     this.subtitles = const [],
-  });
+  }) : expireAt = expireAt ?? StreamBundle.computeSafeExpireAt(expiresInSec);
+
+  StreamBundle toStreamBundle() => StreamBundle(
+        videoUrl: videoUrl,
+        subtitles: subtitles,
+        expiresInSec: expiresInSec,
+        expiresAt: expiresAt,
+        expireAt: expireAt,
+      );
 
   factory UnlockResponse.fromJson(Map<String, dynamic> json) {
+    final ttl = StreamBundle.parseTtlSec(
+      json,
+      defaultTtlSec: StreamBundle.defaultTtlSec,
+    );
     return UnlockResponse(
       coinBalance: (json['coin_balance'] as num?)?.toInt() ?? 0,
       bonusCoinBalance: (json['bonus_coin_balance'] as num?)?.toInt() ?? 0,
@@ -200,6 +248,9 @@ class UnlockResponse {
       adUnlocksRemainingToday:
           (json['ad_unlocks_remaining_today'] as num?)?.toInt() ?? 0,
       videoUrl: json['video_url']?.toString() ?? '',
+      expiresInSec: ttl,
+      expiresAt: StreamBundle.parseExpiresAtUnix(json),
+      expireAt: StreamBundle.computeSafeExpireAt(ttl),
       subtitles: (json['subtitles'] as List<dynamic>?)
               ?.whereType<Map<dynamic, dynamic>>()
               .map(

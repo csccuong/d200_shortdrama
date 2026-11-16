@@ -27,15 +27,14 @@ class NativeFullScreen extends StatefulWidget {
   State<NativeFullScreen> createState() => _NativeFullScreenState();
 }
 
-class _NativeFullScreenState extends State<NativeFullScreen>
-    with WidgetsBindingObserver {
+class _NativeFullScreenState extends State<NativeFullScreen> {
   bool _closeLocked = true;
   int _secondsLeft = 2;
   Timer? _timer;
-  Timer? _autoNavigateTimer;
+  Timer? _loadTimeoutTimer;
+  bool _adShown = false;
   bool _navigated = false;
   bool _showCloseButton = false;
-  bool _shouldNavigateOnResume = false;
 
   @override
   void initState() {
@@ -49,10 +48,11 @@ class _NativeFullScreenState extends State<NativeFullScreen>
       return;
     }
     EasyAds.instance.appLifecycleReactor?.setOnSplashScreen(true);
-    WidgetsBinding.instance.addObserver(this);
 
-    Future.delayed(const Duration(seconds: 10), () {
-      if (!_navigated && mounted) {
+    // Fallback timeout applies ONLY while waiting for initial ad fill;
+    // once the ad displays, user must explicitly tap Close to continue.
+    _loadTimeoutTimer = Timer(const Duration(seconds: 8), () {
+      if (!_adShown && !_navigated && mounted) {
         _handleNavigate();
       }
     });
@@ -60,26 +60,12 @@ class _NativeFullScreenState extends State<NativeFullScreen>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
-    _autoNavigateTimer?.cancel();
+    _loadTimeoutTimer?.cancel();
     if (AppConstants.isMobilePlatform) {
       EasyAds.instance.appLifecycleReactor?.setOnSplashScreen(false);
     }
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_navigated) return;
-
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _shouldNavigateOnResume = true;
-    } else if (state == AppLifecycleState.resumed && _shouldNavigateOnResume) {
-      _shouldNavigateOnResume = false;
-      Future.delayed(const Duration(milliseconds: 300), _handleNavigate);
-    }
   }
 
   void _startCountdown() {
@@ -105,23 +91,19 @@ class _NativeFullScreenState extends State<NativeFullScreen>
 
   void _onAdShown() {
     if (!mounted) return;
+    _adShown = true;
+    _loadTimeoutTimer?.cancel();
     setState(() {
       _showCloseButton = true;
     });
     _startCountdown();
-    _autoNavigateTimer?.cancel();
-    _autoNavigateTimer = Timer(const Duration(seconds: 8), () {
-      if (!_navigated && mounted) {
-        _handleNavigate();
-      }
-    });
   }
 
   void _handleNavigate() {
     if (_navigated || !mounted) return;
     _navigated = true;
     _timer?.cancel();
-    _autoNavigateTimer?.cancel();
+    _loadTimeoutTimer?.cancel();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       widget.handleNavigate();
@@ -130,7 +112,10 @@ class _NativeFullScreenState extends State<NativeFullScreen>
 
   @override
   Widget build(BuildContext context) {
+    final mediaPadding = MediaQuery.paddingOf(context);
     final screenHeight = MediaQuery.sizeOf(context).height;
+    final adHeight = (screenHeight - mediaPadding.top - mediaPadding.bottom)
+        .clamp(320.0, screenHeight);
 
     return PopScope(
       canPop: false,
@@ -138,29 +123,33 @@ class _NativeFullScreenState extends State<NativeFullScreen>
         backgroundColor: AppColors.black,
         body: Stack(
           children: [
-            widget.nativeFullHighId != null
-                ? EasyNativeAdHigh(
-                    factoryId: NativeFactoryId.nativeFull,
-                    adId: widget.nativeFullId,
-                    adIdHigh: widget.nativeFullHighId!,
-                    adIdName: widget.adIdName ?? MyAdIdName.nativeFull,
-                    adIdNameHigh: widget.adIdNameHigh,
-                    height: screenHeight,
-                    onImpression: _onAdShown,
-                    onFailedToLoad: _handleNavigate,
-                  )
-                : EasyNativeAd(
-                    factoryId: NativeFactoryId.nativeFull,
-                    adId: widget.nativeFullId,
-                    adIdName: widget.adIdName ?? MyAdIdName.nativeFull,
-                    height: screenHeight,
-                    onImpression: _onAdShown,
-                    onFailedToLoad: _handleNavigate,
-                  ),
+            SafeArea(
+              top: true,
+              bottom: true,
+              child: widget.nativeFullHighId != null
+                  ? EasyNativeAdHigh(
+                      factoryId: NativeFactoryId.nativeFull,
+                      adId: widget.nativeFullId,
+                      adIdHigh: widget.nativeFullHighId!,
+                      adIdName: widget.adIdName ?? MyAdIdName.nativeFull,
+                      adIdNameHigh: widget.adIdNameHigh,
+                      height: adHeight,
+                      onImpression: _onAdShown,
+                      onFailedToLoad: _handleNavigate,
+                    )
+                  : EasyNativeAd(
+                      factoryId: NativeFactoryId.nativeFull,
+                      adId: widget.nativeFullId,
+                      adIdName: widget.adIdName ?? MyAdIdName.nativeFull,
+                      height: adHeight,
+                      onImpression: _onAdShown,
+                      onFailedToLoad: _handleNavigate,
+                    ),
+            ),
             if (_showCloseButton)
               Positioned(
-                top: MediaQuery.paddingOf(context).top + 10.h,
-                right: 12.w,
+                top: mediaPadding.top + 32.h,
+                right: 14.w,
                 child: Material(
                   color: AppColors.transparent,
                   child: InkWell(
@@ -178,13 +167,20 @@ class _NativeFullScreenState extends State<NativeFullScreen>
                           width: 1,
                         ),
                       ),
-                      child: Icon(
-                        Icons.close_rounded,
-                        color: _closeLocked
-                            ? AppColors.textWhite54
-                            : AppColors.textPrimary,
-                        size: 20.sp,
-                      ),
+                      child: _closeLocked
+                          ? Text(
+                              '$_secondsLeft',
+                              style: const TextStyle(
+                                color: AppColors.textWhite70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          : Icon(
+                              Icons.close_rounded,
+                              color: AppColors.textPrimary,
+                              size: 20.sp,
+                            ),
                     ),
                   ),
                 ),

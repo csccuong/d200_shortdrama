@@ -29,7 +29,8 @@ class ShortsFeedScreen extends ConsumerStatefulWidget {
   ConsumerState<ShortsFeedScreen> createState() => _ShortsFeedScreenState();
 }
 
-class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
+class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
+    with WidgetsBindingObserver {
   final PageController _pageController = PageController();
   final ScrollController _allDramasScrollCtrl = ScrollController();
   final Dio _prefetchDio = Dio(
@@ -44,6 +45,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   int _topTab = 0; // 0: For you (Vertical Feed) | 1: All Dramas
   int _currentIndex = 0;
   bool _isPushedRouteActive = false;
+  bool _isRefreshingExpiredFeed = false;
 
   // Per-slide preview telemetry tracking
   int _activePosSec = 0;
@@ -67,6 +69,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _allDramasScrollCtrl.addListener(_onAllDramasScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.isTabActive) {
@@ -76,10 +79,21 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        widget.isTabActive &&
+        _topTab == 0 &&
+        !_isPushedRouteActive) {
+      unawaited(_refreshForYouIfExpired());
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant ShortsFeedScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!oldWidget.isTabActive && widget.isTabActive) {
       _ensureFeedLoaded();
+      unawaited(_refreshForYouIfExpired());
       if (_topTab == 1 && _allDramas.isEmpty) {
         unawaited(_loadAllDramas(reset: true));
       }
@@ -88,11 +102,43 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     _allDramasScrollCtrl.dispose();
     _prefetchCancelToken.cancel('disposed');
     _prefetchDio.close(force: true);
     super.dispose();
+  }
+
+  Future<void> _refreshForYouIfExpired() async {
+    if (_isRefreshingExpiredFeed) return;
+    final feed = ref.read(feedProvider);
+    if (feed.items.isEmpty || feed.isLoadingMore) return;
+
+    final idx = _currentIndex < feed.items.length ? _currentIndex : 0;
+    if (!feed.items[idx].isStreamExpired) return;
+
+    _isRefreshingExpiredFeed = true;
+    try {
+      _prefetchedUrls.clear();
+      if (mounted) {
+        setState(() {
+          _currentIndex = 0;
+          _activePosSec = 0;
+          _didTrackStart = false;
+          _didTrackWatch3s = false;
+          _didTrackFinish = false;
+        });
+      }
+      await ref
+          .read(feedProvider.notifier)
+          .refresh(ref.read(localeProvider).appLanguage);
+      if (mounted && _pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    } finally {
+      _isRefreshingExpiredFeed = false;
+    }
   }
 
   void _ensureFeedLoaded() {
@@ -183,6 +229,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
     for (int offset = 1; offset <= 2; offset++) {
       final targetIdx = currentIdx + offset;
       if (targetIdx >= items.length) continue;
+      if (items[targetIdx].isStreamExpired) continue;
       final rawUrl = items[targetIdx].preview?.videoUrl ?? '';
       if (rawUrl.isEmpty) continue;
       final resolved = coord.resolveMediaUrl(rawUrl);
@@ -194,7 +241,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
               resolved,
               cancelToken: token,
               options: Options(
-                headers: const {'Range': 'bytes=0-65535'},
+                headers: const {'Range': 'bytes=0-1572863'},
                 responseType: ResponseType.stream,
               ),
             )
@@ -780,8 +827,12 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
             );
           }
 
-          // Prefetch bytes 0-1.5MB for upcoming 2 slides
-          _prefetchAhead(feedItems, idx);
+          if (idx < feedItems.length && feedItems[idx].isStreamExpired) {
+            unawaited(_refreshForYouIfExpired());
+          } else {
+            // Prefetch bytes 0-1.5MB for upcoming 2 slides
+            _prefetchAhead(feedItems, idx);
+          }
         },
         itemBuilder: (context, index) {
           final item = feedItems[index];
@@ -801,6 +852,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen> {
             sourceScreen: 'for_you',
             isActive: active,
             showFullDramaButton: true,
+            onPreviewExpired: () => unawaited(_refreshForYouIfExpired()),
             onOpenFullDrama: () => _openFullDrama(
               item,
               startEpisode: targetEp,

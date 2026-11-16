@@ -18,9 +18,7 @@ bool _hasUnit(String adId) => adId.isNotEmpty && adId != 'null';
 
 bool interAllEnabled(WidgetRef ref) {
   if (!AppConstants.isMobilePlatform || _isVip(ref)) return false;
-  if (!FirebaseRemoteConfigService.getBoolConfigByKey(
-    FirebaseRemoteConfigService.inter_all,
-  )) {
+  if (!FirebaseRemoteConfigService.interAllEnabled) {
     return false;
   }
   return _hasUnit(MyAdIdName.interAll.getId);
@@ -28,9 +26,7 @@ bool interAllEnabled(WidgetRef ref) {
 
 bool rewardAllEnabled(WidgetRef ref) {
   if (!AppConstants.isMobilePlatform || _isVip(ref)) return false;
-  if (!FirebaseRemoteConfigService.getBoolConfigByKey(
-    FirebaseRemoteConfigService.reward_all,
-  )) {
+  if (!FirebaseRemoteConfigService.rewardAllEnabled) {
     return false;
   }
   return _hasUnit(MyAdIdName.rewardedAd.getId);
@@ -70,35 +66,59 @@ Future<bool> showRewardUnlock(BuildContext context, WidgetRef ref) async {
 
   final completer = Completer<bool>();
   var earned = false;
+  var dismissed = false;
+  Timer? dismissGraceTimer;
+
   final sub = EasyAds.instance.onEvent.listen((event) {
     if (event.adUnitType == AdUnitType.rewarded &&
         event.type == AdEventType.earnedReward) {
       earned = true;
+      dismissGraceTimer?.cancel();
+      if (dismissed && !completer.isCompleted) {
+        completer.complete(true);
+      }
     }
   });
 
-  EasyAds.instance.showRewardAd(
+  final started = EasyAds.instance.showRewardAd(
     context,
     adNetwork: AdNetwork.admob,
     adId: MyAdIdName.rewardedAd.getId,
+    adIdName: MyAdIdName.rewardedAd,
     adDissmissed: () {
-      if (!completer.isCompleted) completer.complete(earned);
+      dismissed = true;
+      if (completer.isCompleted) return;
+      if (earned) {
+        completer.complete(true);
+      } else {
+        // Yield briefly in case GMA/mediation fires onUserEarnedReward just
+        // after onAdDismissedFullScreenContent.
+        dismissGraceTimer?.cancel();
+        dismissGraceTimer = Timer(const Duration(milliseconds: 400), () {
+          if (!completer.isCompleted) completer.complete(earned);
+        });
+      }
     },
     onFailed: () {
+      dismissGraceTimer?.cancel();
       if (!completer.isCompleted) completer.complete(false);
     },
   );
 
-  if (!EasyAds.instance.isFullscreenAdShowing && !completer.isCompleted) {
+  if (!started && !completer.isCompleted) {
     completer.complete(false);
   }
 
   try {
     return await completer.future.timeout(
-      const Duration(seconds: 90),
-      onTimeout: () => false,
+      const Duration(seconds: 60),
+      onTimeout: () {
+        EasyAds.instance.setFullscreenAdShowing(false);
+        return false;
+      },
     );
   } finally {
+    dismissGraceTimer?.cancel();
     await sub.cancel();
   }
 }

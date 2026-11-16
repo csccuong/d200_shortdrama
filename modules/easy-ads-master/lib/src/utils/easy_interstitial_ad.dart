@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:easy_ads_flutter/easy_ads_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart';
+
+import 'easy_fullscreen_ad_loading_box.dart';
 
 class EasyInterstitialAd extends StatefulWidget {
   final AdNetwork adNetwork;
@@ -30,60 +31,94 @@ class EasyInterstitialAd extends StatefulWidget {
 
 class _EasyInterstitialAdState extends State<EasyInterstitialAd>
     with WidgetsBindingObserver {
-  late final String _adKey = widget.adIdName ?? (widget.adId.startsWith('ca-app-pub-') ? widget.adId : widget.adId);
-  late final EasyAdBase? _interstitialAd = EasyAds.instance.getOrCreateCachedInterstitialAd(
-    adNetwork: widget.adNetwork,
+  late final String _adKey = widget.adIdName ?? widget.adId;
+  late final String _resolvedId = EasyAds.instance.resolveAdUnitId(widget.adId);
+  late final EasyAdBase? _interstitialAd = EasyAds.instance.isAdEnabled(
+    adUnitType: AdUnitType.interstitial,
     adId: widget.adId,
-    adIdName: widget.adIdName ?? (widget.adId.startsWith('ca-app-pub-') ? null : widget.adId),
-    immersiveModeEnabled: true,
-  );
+    adIdName: widget.adIdName,
+  )
+      ? EasyAds.instance.getOrCreateCachedInterstitialAd(
+          adNetwork: widget.adNetwork,
+          adId: widget.adId,
+          adIdName: widget.adIdName ??
+              (widget.adId.startsWith('ca-app-pub-') ? null : widget.adId),
+          immersiveModeEnabled: true,
+        )
+      : null;
 
   StreamSubscription? _streamSubscription;
   Timer? _timeoutTimer;
+  bool _terminalHandled = false;
+  bool _isShowScheduled = false;
 
-  Future<void> _showAd() => Future.delayed(
-        _interstitialAd?.isAdLoaded == true
-            ? const Duration(milliseconds: 100)
-            : const Duration(seconds: 1),
-        () {
-          if (_appLifecycleState == AppLifecycleState.resumed) {
-            if (mounted) {
-              _interstitialAd?.show();
-            }
-          } else {
-            _adFailedToShow = true;
-          }
-        },
-      );
+  Future<void> _showAd() {
+    if (_isShowScheduled || _terminalHandled) return Future.value();
+    _isShowScheduled = true;
+    return Future.delayed(
+      const Duration(milliseconds: 50),
+      () {
+        if (!mounted || _terminalHandled) return;
+        if (_appLifecycleState == AppLifecycleState.resumed) {
+          _interstitialAd?.show();
+        } else {
+          _adFailedToShow = true;
+        }
+      },
+    );
+  }
 
-  void _handleTimeout() {
+  void _completeTerminal({required bool dismissed}) {
+    if (_terminalHandled) return;
+    _terminalHandled = true;
     _timeoutTimer?.cancel();
+    _streamSubscription?.cancel();
+    EasyAds.instance.setFullscreenAdShowing(false);
+    if (dismissed ||
+        (_interstitialAd?.isAdLoaded != true &&
+            _interstitialAd?.isAdLoading != true)) {
+      EasyAds.instance.disposeCachedInterstitialAd(_adKey);
+    }
     if (mounted) {
-      EasyAds.instance.setFullscreenAdShowing(false);
-      _streamSubscription?.cancel();
-      // If ad failed to load completely, dispose it.
-      // If it is still loading in background, keep it in cache so it finishes loading for the next click.
-      if (_interstitialAd?.isAdLoaded != true && _interstitialAd?.isAdLoading != true) {
-        EasyAds.instance.disposeCachedInterstitialAd(_adKey);
+      final nav = Navigator.of(context);
+      if (nav.canPop()) {
+        nav.pop();
       }
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+    }
+    if (dismissed) {
+      widget.adDismissed?.call();
+    } else {
       widget.onFailed?.call();
     }
   }
 
+  void _handleTimeout() => _completeTerminal(dismissed: false);
+
   @override
   void initState() {
+    super.initState();
     WidgetsBinding.instance.addObserver(this);
     EasyAds.instance.setFullscreenAdShowing(true);
-    
-    _timeoutTimer = Timer(const Duration(seconds: 12), _handleTimeout);
+
+    final ad = _interstitialAd;
+    if (ad == null || ad.isAdLoadedFailed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _completeTerminal(dismissed: false);
+      });
+      return;
+    }
+
+    _timeoutTimer = Timer(const Duration(seconds: 7), _handleTimeout);
 
     _streamSubscription = EasyAds.instance.onEvent.listen((event) {
-      final resolvedId = EasyAds.instance.resolveAdUnitId(widget.adId);
-      if (event.adUnitType == AdUnitType.interstitial &&
-          (event.adUnitId == widget.adId || event.adUnitId == resolvedId)) {
+      if (_terminalHandled) return;
+      if (isMatchingFullscreenAdEvent(
+        event,
+        expectedType: AdUnitType.interstitial,
+        rawAdId: widget.adId,
+        resolvedId: _resolvedId,
+        currentAdUnitId: ad.adUnitId,
+      )) {
         switch (event.type) {
           case AdEventType.adLoaded:
             if (_appLifecycleState == AppLifecycleState.resumed) {
@@ -100,37 +135,16 @@ class _EasyInterstitialAdState extends State<EasyInterstitialAd>
             widget.onAdImpression?.call();
             break;
           case AdEventType.adFailedToLoad:
-            _timeoutTimer?.cancel();
-            EasyAds.instance.setFullscreenAdShowing(false);
-            _streamSubscription?.cancel();
-            EasyAds.instance.disposeCachedInterstitialAd(_adKey);
-            if (mounted && Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-            widget.onFailed?.call();
+            _completeTerminal(dismissed: false);
             break;
           case AdEventType.adDismissed:
-            _timeoutTimer?.cancel();
-            EasyAds.instance.setFullscreenAdShowing(false);
-            _streamSubscription?.cancel();
-            EasyAds.instance.disposeCachedInterstitialAd(_adKey);
-            if (mounted && Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-            widget.adDismissed?.call();
+            _completeTerminal(dismissed: true);
             break;
           case AdEventType.adFailedToShow:
             if (_appLifecycleState != AppLifecycleState.resumed) {
               _adFailedToShow = true;
             } else {
-              _timeoutTimer?.cancel();
-              EasyAds.instance.setFullscreenAdShowing(false);
-              _streamSubscription?.cancel();
-              EasyAds.instance.disposeCachedInterstitialAd(_adKey);
-              if (mounted && Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-              widget.onFailed?.call();
+              _completeTerminal(dismissed: false);
             }
             break;
           default:
@@ -139,17 +153,19 @@ class _EasyInterstitialAdState extends State<EasyInterstitialAd>
       }
     });
 
-    if (_interstitialAd?.isAdLoaded == true) {
+    if (ad.isAdLoaded) {
       if (_appLifecycleState == AppLifecycleState.resumed) {
         _showAd();
       } else {
         _adFailedToShow = true;
       }
-    } else if (_interstitialAd?.isAdLoading != true) {
-      _interstitialAd?.load();
+    } else if (!ad.isAdLoading) {
+      ad.load().then((_) {
+        if (mounted && ad.isAdLoadedFailed && !_terminalHandled) {
+          _completeTerminal(dismissed: false);
+        }
+      });
     }
-
-    super.initState();
   }
 
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
@@ -159,6 +175,7 @@ class _EasyInterstitialAdState extends State<EasyInterstitialAd>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appLifecycleState = state;
     if (state == AppLifecycleState.resumed && _adFailedToShow) {
+      _adFailedToShow = false;
       _showAd();
     }
     super.didChangeAppLifecycleState(state);
@@ -169,80 +186,12 @@ class _EasyInterstitialAdState extends State<EasyInterstitialAd>
     WidgetsBinding.instance.removeObserver(this);
     _streamSubscription?.cancel();
     _timeoutTimer?.cancel();
+    if (!_terminalHandled) {
+      EasyAds.instance.setFullscreenAdShowing(false);
+    }
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      child: Center(
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: 130,
-            height: 130,
-            decoration: BoxDecoration(
-              color: const Color(0xE614151C),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0x1FFFFFFF),
-                width: 1,
-              ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x59000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 6),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 64,
-                  height: 64,
-                  child: Lottie.asset(
-                    'assets/json/loading_ads.json',
-                    package: 'easy_ads_flutter',
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Lottie.asset(
-                        'assets/json/loading_ads.json',
-                        fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Center(
-                            child: SizedBox(
-                              width: 28,
-                              height: 28,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Loading Ads...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    decoration: TextDecoration.none,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const EasyFullscreenAdLoadingCard();
 }

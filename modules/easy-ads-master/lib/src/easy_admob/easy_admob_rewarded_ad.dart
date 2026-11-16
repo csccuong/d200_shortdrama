@@ -46,45 +46,69 @@ class EasyAdmobRewardedAd extends EasyAdBase {
 
   @override
   Future<void> load() async {
-    if (_isAdLoaded) {
+    if (_isAdLoaded || _isAdLoading) {
       return;
     }
+    final sanitizedId = adUnitId.trim();
+    if (sanitizedId.isEmpty || sanitizedId == 'null') {
+      _rewardedAd = null;
+      _isAdLoaded = false;
+      _isAdLoading = false;
+      _isAdLoadedFailed = true;
+      onAdFailedToLoad?.call(
+          adNetwork, adUnitType, null, 'Empty or invalid adUnitId');
+      return;
+    }
+
     _isAdLoading = true;
-    await RewardedAd.load(
-        adUnitId: adUnitId,
-        request: _adRequest,
-        rewardedAdLoadCallback:
-            RewardedAdLoadCallback(onAdLoaded: (RewardedAd ad) {
-          _rewardedAd = ad;
-          _rewardedAd?.onPaidEvent =
-              (ad, valueMicros, precision, currencyCode) {
-            onPaidEvent?.call(
-              adNetwork,
-              adUnitType,
-              ad,
-              valueMicros,
-              precision,
-              currencyCode,
-            );
-          };
-          _isAdLoaded = true;
-          _isAdLoadedFailed = false;
-          _isAdLoading = false;
-          onAdLoaded?.call(adNetwork, adUnitType, ad);
-        }, onAdFailedToLoad: (LoadAdError error) {
-          _rewardedAd = null;
-          _isAdLoaded = false;
-          _isAdLoadedFailed = true;
-          _isAdLoading = false;
-          onAdFailedToLoad?.call(
-              adNetwork, adUnitType, error, error.toString());
-        }));
+    _isAdLoadedFailed = false;
+    try {
+      await RewardedAd.load(
+          adUnitId: sanitizedId,
+          request: _adRequest,
+          rewardedAdLoadCallback:
+              RewardedAdLoadCallback(onAdLoaded: (RewardedAd ad) {
+            _rewardedAd = ad;
+            _rewardedAd?.onPaidEvent =
+                (ad, valueMicros, precision, currencyCode) {
+              onPaidEvent?.call(
+                adNetwork,
+                adUnitType,
+                ad,
+                valueMicros,
+                precision,
+                currencyCode,
+              );
+            };
+            _isAdLoaded = true;
+            _isAdLoadedFailed = false;
+            _isAdLoading = false;
+            onAdLoaded?.call(adNetwork, adUnitType, ad);
+          }, onAdFailedToLoad: (LoadAdError error) {
+            _rewardedAd = null;
+            _isAdLoaded = false;
+            _isAdLoadedFailed = true;
+            _isAdLoading = false;
+            onAdFailedToLoad?.call(
+                adNetwork, adUnitType, error, error.toString());
+          }));
+    } catch (e) {
+      _rewardedAd = null;
+      _isAdLoaded = false;
+      _isAdLoadedFailed = true;
+      _isAdLoading = false;
+      onAdFailedToLoad?.call(adNetwork, adUnitType, null, e.toString());
+    }
   }
 
   @override
   dynamic show() {
     final ad = _rewardedAd;
-    if (ad == null) return;
+    if (ad == null) {
+      onAdFailedToShow?.call(
+          adNetwork, adUnitType, null, 'Rewarded ad is not ready');
+      return;
+    }
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (RewardedAd ad) {

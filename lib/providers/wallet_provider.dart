@@ -94,6 +94,27 @@ class WalletNotifier extends Notifier<WalletState> {
     );
   }
 
+  /// Syncs wallet immediately from POST /v1/iap/verify response fields if present.
+  void applyIapVerifyResponse(
+    Map<String, dynamic> data, {
+    bool? fallbackIsVip,
+  }) {
+    final coinBalance = (data['coin_balance'] as num?)?.toInt();
+    final bonusBalance = (data['bonus_coin_balance'] as num?)?.toInt();
+    final totalCoins = (data['total_coins'] as num?)?.toInt() ??
+        ((coinBalance != null || bonusBalance != null)
+            ? (coinBalance ?? state.coinBalance) +
+                (bonusBalance ?? state.bonusCoinBalance)
+            : null);
+    state = state.copyWith(
+      coinBalance: coinBalance,
+      bonusCoinBalance: bonusBalance,
+      totalCoins: totalCoins,
+      isVip: (data['is_vip'] as bool?) ?? fallbackIsVip,
+      vipExpiresAt: data['vip_expires_at']?.toString(),
+    );
+  }
+
   /// Syncs wallet from RewardsOverview.wallet snapshot.
   void updateFromWalletInfo(WalletInfo wallet) {
     state = state.copyWith(

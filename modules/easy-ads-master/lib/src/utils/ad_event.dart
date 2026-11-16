@@ -20,7 +20,14 @@ class AdEvent {
   /// In case of [AdEventType.adFailedToLoad] & [AdEventType.adFailedToShow] or in any error case
   final String? error;
 
+  /// Explicit ad unit identifier attached by [EasyEventController] so events
+  /// without an [Ad] object (such as [AdEventType.adFailedToLoad]) still match
+  /// the originating ad unit.
+  final String? _adUnitId;
+
   String? get adUnitId {
+    final explicitId = _adUnitId;
+    if (explicitId != null && explicitId.isNotEmpty) return explicitId;
     if (ad != null) return ad!.adUnitId;
     if (data is Ad) return (data as Ad).adUnitId;
     return null;
@@ -31,10 +38,11 @@ class AdEvent {
     required this.adNetwork,
     this.adUnitType,
     this.ad,
+    String? adUnitId,
     this.valueMicros,
     this.precision,
     this.currencyCode,
     this.data,
     this.error,
-  });
+  }) : _adUnitId = adUnitId;
 }

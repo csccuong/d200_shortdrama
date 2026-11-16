@@ -7,16 +7,19 @@ import '../ads/const/ad_id_name.dart';
 import '../ads/placement/show_placement_ad.dart';
 import '../core/network/drama_dio_interceptor.dart';
 import '../core/utils/app_toast.dart';
+import '../core/utils/episode_playback_helper.dart';
 import '../core/utils/screen_utils.dart';
 import '../models/drama_card.dart';
 import '../models/drama_models.dart';
 import '../models/feed_response.dart';
 import '../models/play_response.dart';
+import '../models/stream_bundle.dart';
 import '../providers/app_providers.dart';
 import '../services/app_strings.dart';
 import '../services/srt_parser.dart';
 import 'drama_network_image.dart';
 import 'player_settings_sheet.dart';
+import 'premium_upgrade_dialog.dart';
 import 'unlock_reward_overlay.dart';
 
 class ShortVideoItem extends ConsumerStatefulWidget {
@@ -29,11 +32,13 @@ class ShortVideoItem extends ConsumerStatefulWidget {
   final VoidCallback? onVideoEnded;
   final FutureOr<void> Function()? onOpenEpisodeList;
   final VoidCallback? onOpenFullDrama;
+  final VoidCallback? onPreviewExpired;
   final bool showFullDramaButton;
   final int? requiredUnlockEpisode;
   final void Function(int episodeNo, bool fullDrama)? onEpisodeUnlocked;
   final void Function(int posSec, int durSec, bool isPlaying)? onPlaybackUpdate;
   final void Function(List<String> subLangs)? onSubtitlesLoaded;
+  final void Function(int episodeNo, bool visible)? onPaywallVisibilityChanged;
 
   const ShortVideoItem({
     super.key,
@@ -46,11 +51,13 @@ class ShortVideoItem extends ConsumerStatefulWidget {
     this.onVideoEnded,
     this.onOpenEpisodeList,
     this.onOpenFullDrama,
+    this.onPreviewExpired,
     this.showFullDramaButton = false,
     this.requiredUnlockEpisode,
     this.onEpisodeUnlocked,
     this.onPlaybackUpdate,
     this.onSubtitlesLoaded,
+    this.onPaywallVisibilityChanged,
   });
 
   @override
@@ -84,6 +91,19 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   PaywallResponse? _paywall;
   String _blockReason = '';
   bool _isUnlocking = false;
+  bool _lastNotifiedPaywallVisible = false;
+
+  void _notifyPaywallVisibility(bool visible) {
+    if (_lastNotifiedPaywallVisible == visible) return;
+    _lastNotifiedPaywallVisible = visible;
+    widget.onPaywallVisibilityChanged?.call(widget.episodeNo, visible);
+  }
+
+  void _setPaywallState(PaywallResponse? paywall, String blockReason) {
+    _paywall = paywall;
+    _blockReason = blockReason;
+    _notifyPaywallVisibility(paywall != null);
+  }
 
   bool _isPausedByUser = false;
   bool _didTriggerEnd = false;
@@ -91,6 +111,11 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   bool _isEpisodeSheetOpen = false;
   bool _hasRequestedPlay = false;
   int _lastTickEmitSec = -1;
+
+  StreamBundle? _streamBundle;
+  Duration _lastPosition = Duration.zero;
+  bool _hasRetried403 = false;
+  bool _isRenewingStream = false;
 
   @override
   void initState() {
@@ -107,13 +132,21 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final ctrl = _controller;
-    if (ctrl == null || !_isInitialized) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      unawaited(_safePause(ctrl));
+      if (ctrl != null && _isInitialized) {
+        _lastPosition = ctrl.value.position;
+        unawaited(_safePause(ctrl));
+      }
     } else if (state == AppLifecycleState.resumed) {
+      if (!widget.isActive) return;
+      final bundle = _streamBundle;
+      if (bundle != null && bundle.isExpired) {
+        _handleExpiredStream(autoPlayAfter: !_isPausedByUser);
+        return;
+      }
       _updatePlaybackState();
     }
   }
@@ -123,7 +156,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.drama.dramaId != widget.drama.dramaId ||
         oldWidget.episodeNo != widget.episodeNo ||
-        oldWidget.previewInfo?.videoUrl != widget.previewInfo?.videoUrl) {
+        oldWidget.previewInfo?.videoUrl != widget.previewInfo?.videoUrl ||
+        oldWidget.previewInfo?.expireAt != widget.previewInfo?.expireAt) {
       _disposeController();
       _resetEpisodeState();
       if (widget.isActive) {
@@ -135,6 +169,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
           _paywall == null &&
           !_isInitialized) {
         _initEpisode();
+      } else if (widget.isActive &&
+          _streamBundle != null &&
+          _streamBundle!.isExpired) {
+        _handleExpiredStream(autoPlayAfter: !_isPausedByUser);
       } else {
         _updatePlaybackState();
       }
@@ -144,10 +182,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   void _resetEpisodeState() {
     _isLoadingPlay = false;
     _isInitialized = false;
+    _isErrorReset:
     _hasError = false;
     _errorMessage = '';
-    _paywall = null;
-    _blockReason = '';
+    _setPaywallState(null, '');
     _isPausedByUser = false;
     _didTriggerEnd = false;
     _didApplyInitialSeek = false;
@@ -157,11 +195,16 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     _activeSubtitle = null;
     _subtitleLoadSeq++;
     _lastTickEmitSec = -1;
+    _streamBundle = null;
+    _lastPosition = Duration.zero;
+    _hasRetried403 = false;
+    _isRenewingStream = false;
   }
 
   Future<void> _initEpisode() async {
     if (_isLoadingPlay) return;
     _hasRequestedPlay = true;
+    _hasRetried403 = false;
     _isLoadingPlay = true;
     _isInitialized = false;
     _hasError = false;
@@ -174,25 +217,36 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     try {
       final preview = widget.previewInfo;
       if (preview != null) {
-        await _startVideoStream(
-          videoUrl: preview.videoUrl,
-          subtitles: preview.subtitles,
-        );
-        return;
+        if (preview.isStreamExpired && widget.onPreviewExpired != null) {
+          widget.onPreviewExpired!();
+          if (mounted) {
+            setState(() {
+              _isLoadingPlay = false;
+              _hasRequestedPlay = false;
+            });
+          }
+          return;
+        }
+        if (!preview.isStreamExpired) {
+          final bundle = preview.toStreamBundle();
+          _streamBundle = bundle;
+          await _startVideoStream(bundle);
+          return;
+        }
       }
 
       final locale = ref.read(localeProvider);
       final dramaApi = ref.read(dramaApiServiceProvider);
-      final playResp = await dramaApi.playEpisode(
-        widget.drama.dramaId,
-        widget.episodeNo,
+      final bundle = await EpisodePlaybackHelper(dramaApi)
+          .ensureFreshEpisodeStream(
+        dramaId: widget.drama.dramaId,
+        episodeNumber: widget.episodeNo,
+        cachedBundle: _streamBundle,
         lang: locale.appLanguage,
       );
       if (!mounted) return;
-      await _startVideoStream(
-        videoUrl: playResp.videoUrl,
-        subtitles: playResp.subtitles,
-      );
+      _streamBundle = bundle;
+      await _startVideoStream(bundle);
     } on DramaPaywallException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -264,16 +318,121 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     }
   }
 
-  Future<void> _startVideoStream({
-    required String videoUrl,
-    required List<SubtitleTrack> subtitles,
+  void _handleExpiredStream({required bool autoPlayAfter}) {
+    if (widget.previewInfo != null) {
+      if (widget.onPreviewExpired != null) {
+        widget.onPreviewExpired!();
+        return;
+      }
+    }
+    unawaited(
+      _renewEpisodeStream(
+        forceRefresh: true,
+        autoPlayAfter: autoPlayAfter,
+      ),
+    );
+  }
+
+  Future<void> _handle403SafetyRetry() async {
+    if (_hasRetried403) return;
+    _hasRetried403 = true;
+    debugPrint(
+      'ShortVideoItem 403 safety retry (${widget.drama.dramaId} ep ${widget.episodeNo})',
+    );
+    if (widget.previewInfo != null && widget.onPreviewExpired != null) {
+      _disposeController();
+      if (mounted) {
+        setState(() {
+          _isLoadingPlay = true;
+          _isInitialized = false;
+          _hasError = false;
+        });
+      }
+      widget.onPreviewExpired!();
+      return;
+    }
+    await _renewEpisodeStream(
+      forceRefresh: true,
+      autoPlayAfter: !_isPausedByUser,
+    );
+  }
+
+  Future<void> _renewEpisodeStream({
+    required bool forceRefresh,
+    required bool autoPlayAfter,
   }) async {
-    final trimmedUrl = videoUrl.trim();
+    if (_isRenewingStream) return;
+    _isRenewingStream = true;
+    final ctrl = _controller;
+    final currentPos =
+        (ctrl != null && ctrl.value.isInitialized) ? ctrl.value.position : _lastPosition;
+    if (currentPos > Duration.zero) {
+      _lastPosition = currentPos;
+    }
+    final savedPos = _lastPosition;
+
+    _disposeController();
+    if (mounted) {
+      setState(() {
+        _isLoadingPlay = true;
+        _isInitialized = false;
+        _hasError = false;
+      });
+    }
+
+    try {
+      final locale = ref.read(localeProvider);
+      final dramaApi = ref.read(dramaApiServiceProvider);
+      final bundle = await EpisodePlaybackHelper(dramaApi)
+          .ensureFreshEpisodeStream(
+        dramaId: widget.drama.dramaId,
+        episodeNumber: widget.episodeNo,
+        cachedBundle: forceRefresh ? null : _streamBundle,
+        lang: locale.appLanguage,
+        forceRefresh: forceRefresh,
+      );
+      if (!mounted) return;
+      _streamBundle = bundle;
+      await _startVideoStream(
+        bundle,
+        resumePosition: savedPos,
+        autoPlayAfter: autoPlayAfter,
+      );
+    } on DramaPaywallException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPlay = false;
+        _paywall = PaywallResponse.fromJson(e.paywallData);
+        _blockReason =
+            e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED';
+      });
+    } catch (e, st) {
+      debugPrint(
+        'ShortVideoItem._renewEpisodeStream error (${widget.drama.dramaId} ep ${widget.episodeNo}): $e\n$st',
+      );
+      _disposeController();
+      if (!mounted) return;
+      setState(() {
+        _isLoadingPlay = false;
+        _hasError = true;
+        _errorMessage = ref.read(localeProvider).tr('generic_error_toast');
+      });
+    } finally {
+      _isRenewingStream = false;
+    }
+  }
+
+  Future<void> _startVideoStream(
+    StreamBundle bundle, {
+    Duration? resumePosition,
+    bool autoPlayAfter = true,
+  }) async {
+    final trimmedUrl = bundle.videoUrl.trim();
     if (trimmedUrl.isEmpty) {
       throw StateError('Empty video URL');
     }
 
-    final playableSubs = subtitles
+    final playableSubs = bundle.subtitles
         .where((t) => t.language.trim().isNotEmpty && t.url.trim().isNotEmpty)
         .toList();
     _subTracks = playableSubs;
@@ -286,22 +445,46 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     final ctrl = factory.createFromUrl(trimmedUrl);
     _controller = ctrl;
 
-    await ctrl.initialize().timeout(const Duration(seconds: 20));
+    try {
+      await ctrl.initialize().timeout(const Duration(seconds: 20));
+    } catch (e) {
+      if (mounted &&
+          _controller == ctrl &&
+          !_hasRetried403 &&
+          EpisodePlaybackHelper.isHttp403Error(e)) {
+        await _handle403SafetyRetry();
+        return;
+      }
+      rethrow;
+    }
+
     if (!mounted || _controller != ctrl) {
       unawaited(_safeDisposeController(ctrl));
       return;
     }
     if (ctrl.value.hasError) {
-      throw StateError(ctrl.value.errorDescription ?? 'Video init failed');
+      final errDesc = ctrl.value.errorDescription;
+      if (!_hasRetried403 && EpisodePlaybackHelper.isHttp403Error(errDesc)) {
+        await _handle403SafetyRetry();
+        return;
+      }
+      throw StateError(errDesc ?? 'Video init failed');
     }
 
-    if (widget.initialPositionSec > 0 && !_didApplyInitialSeek) {
-      final durSec = ctrl.value.duration.inSeconds;
-      if (durSec <= 0 || widget.initialPositionSec < durSec - 2) {
-        await _safeSeekTo(ctrl, Duration(seconds: widget.initialPositionSec));
+    final targetSeek = resumePosition != null && resumePosition > Duration.zero
+        ? resumePosition
+        : (widget.initialPositionSec > 0 && !_didApplyInitialSeek
+            ? Duration(seconds: widget.initialPositionSec)
+            : null);
+
+    if (targetSeek != null && targetSeek > Duration.zero) {
+      final durMs = ctrl.value.duration.inMilliseconds;
+      if (durMs <= 0 || targetSeek.inMilliseconds < durMs - 2000) {
+        await _safeSeekTo(ctrl, targetSeek);
+        _lastPosition = targetSeek;
       }
-      _didApplyInitialSeek = true;
     }
+    _didApplyInitialSeek = true;
 
     await _safeSetPlaybackSpeed(ctrl, ref.read(userWalletProvider).playbackSpeed);
     if (!mounted || _controller != ctrl) return;
@@ -310,6 +493,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     setState(() {
       _isLoadingPlay = false;
       _isInitialized = true;
+      _isPausedByUser = !autoPlayAfter;
     });
     _updatePlaybackState();
   }
@@ -400,9 +584,17 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     final ctrl = _controller;
     if (ctrl == null || !mounted) return;
     if (ctrl.value.hasError) {
+      final errDesc = ctrl.value.errorDescription;
       debugPrint(
-        'ShortVideoItem playback error (${widget.drama.dramaId} ep ${widget.episodeNo}): ${ctrl.value.errorDescription}',
+        'ShortVideoItem playback error (${widget.drama.dramaId} ep ${widget.episodeNo}): $errDesc',
       );
+      if (ctrl.value.position > Duration.zero) {
+        _lastPosition = ctrl.value.position;
+      }
+      if (!_hasRetried403 && EpisodePlaybackHelper.isHttp403Error(errDesc)) {
+        unawaited(_handle403SafetyRetry());
+        return;
+      }
       _disposeController();
       setState(() {
         _isLoadingPlay = false;
@@ -415,6 +607,9 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     if (!ctrl.value.isInitialized) return;
 
     final pos = ctrl.value.position;
+    if (pos > Duration.zero) {
+      _lastPosition = pos;
+    }
     final dur = ctrl.value.duration;
     final posSec = pos.inSeconds;
 
@@ -452,8 +647,16 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   void _togglePlayPause() {
     final ctrl = _controller;
     if (ctrl == null || !_isInitialized) return;
+    if (!ctrl.value.isPlaying &&
+        _streamBundle != null &&
+        _streamBundle!.isExpired) {
+      _isPausedByUser = false;
+      _handleExpiredStream(autoPlayAfter: true);
+      return;
+    }
     setState(() {
       if (ctrl.value.isPlaying) {
+        _lastPosition = ctrl.value.position;
         unawaited(_safePause(ctrl));
         _isPausedByUser = true;
         widget.onPlaybackUpdate?.call(
@@ -527,15 +730,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     );
   }
 
-  Future<void> _unlockWithCoins({required bool fullDrama}) async {
-    if (_isUnlocking) return;
-    setState(() => _isUnlocking = true);
-    await _performApiUnlock(
-      method: 'coins',
-      unlockFullDrama: fullDrama,
-    );
-  }
-
   Future<void> _performApiUnlock({
     required String method,
     required bool unlockFullDrama,
@@ -571,10 +765,9 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         _blockReason = '';
         _isUnlocking = false;
       });
-      await _startVideoStream(
-        videoUrl: resp.videoUrl,
-        subtitles: resp.subtitles,
-      );
+      final bundle = resp.toStreamBundle();
+      _streamBundle = bundle;
+      await _startVideoStream(bundle);
     } catch (e) {
       debugPrint('ShortVideoItem._performApiUnlock error: $e');
       if (!mounted) return;
@@ -586,13 +779,17 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     }
   }
 
-  // TODO(IAP): Re-enable when Rewards/IAP tab is integrated.
-  // void _openRewardsOrVip() {
-  //   ref.read(shellTabIndexProvider.notifier).setTab(3);
-  //   if (!widget.showFullDramaButton && Navigator.of(context).canPop()) {
-  //     Navigator.of(context).pop();
-  //   }
-  // }
+  Future<void> _openRewardsOrVip() async {
+    final purchased = await PremiumUpgradeDialog.show(
+      context,
+      closeDelaySeconds: 0,
+      sourceScreen: 'player_paywall',
+    );
+    if (!mounted) return;
+    if (purchased && _paywall != null && widget.isActive) {
+      unawaited(_initEpisode());
+    }
+  }
 
   void _disposeController() {
     final ctrl = _controller;
@@ -647,6 +844,15 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         _loadSubtitlesForLanguage(next.subtitleLanguage);
       }
     });
+
+    ref.listen<bool>(
+      userWalletProvider.select((s) => s.isVip),
+      (prev, isVip) {
+        if (isVip && prev != true && _paywall != null && widget.isActive) {
+          unawaited(_initEpisode());
+        }
+      },
+    );
 
     final locale = ref.watch(localeProvider);
     final playbackSpeed =
@@ -1005,8 +1211,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       isUnlocking: _isUnlocking,
       locale: locale,
       onUnlockWithAd: _unlockWithRewardAd,
-      onUnlockWithCoins: () => _unlockWithCoins(fullDrama: false),
-      onUnlockFullDrama: () => _unlockWithCoins(fullDrama: true),
+      onOpenRewardsOrVip: _openRewardsOrVip,
     );
   }
 }
@@ -1071,5 +1276,4 @@ class _ActionIconButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
+ 

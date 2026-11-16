@@ -220,6 +220,9 @@ const LanguagePack enLanguagePack = LanguagePack(
     'reward_save_30': 'Save 30%',
     'reward_continue_btn': 'Continue',
     'reward_vip_section': 'VIP Exclusive',
+    'iap_cancel_anytime':
+        'Auto-renewable subscription. Cancel anytime in Google Play Store.',
+    'iap_restore_purchases': 'Restore Purchases',
     'player_save_short': 'Save',
     'player_ep_badge': 'Ep',
     'player_eps_short': 'Eps',

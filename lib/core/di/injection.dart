@@ -12,6 +12,7 @@ import '../../services/api/mylist_api_service.dart';
 import '../../services/api/rewards_api_service.dart';
 import '../../services/api/account_api_service.dart';
 import 'package:dxx_shortdrama/services/api/event_tracker_service.dart';
+import '../../services/iap_service.dart';
 import '../utils/screen_utils.dart';
 
 /// Global Service Locator instance (GetIt).
@@ -110,6 +111,13 @@ void ensureDependenciesRegistered() {
     getIt.registerLazySingleton<DramaEventTracker>(
       () => DramaEventTracker(getIt<AppStartupCoordinator>().dio),
       dispose: (tracker) => tracker.dispose(),
+    );
+  }
+
+  if (!getIt.isRegistered<IapService>()) {
+    getIt.registerLazySingleton<IapService>(
+      () => IapService(),
+      dispose: (iap) => iap.dispose(),
     );
   }
 }

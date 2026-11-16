@@ -9,20 +9,28 @@ import '../ads/loading/ad_loading_page.dart';
 import '../ads/manager/my_ad_id_manager.dart';
 import '../core/constants/app_constants.dart';
 import '../core/helper/firebase_helper.dart';
+import '../core/utils/screen_utils.dart';
 import '../main.dart' as app_main;
 import '../services/ads_service.dart';
+import '../services/firebase_remote_config_service.dart';
 import '../services/shared_preference_service.dart';
 
 class AppInitializer {
   AppInitializer._();
 
   static bool _initialized = false;
+  static _RemoteConfigLifecycleObserver? _rcObserver;
 
   static Future<void> init({
     required GlobalKey<NavigatorState> navigatorKey,
   }) async {
     if (_initialized) return;
     _initialized = true;
+
+    if (!AppConstants.isFlutterTest && _rcObserver == null) {
+      _rcObserver = _RemoteConfigLifecycleObserver();
+      WidgetsBinding.instance.addObserver(_rcObserver!);
+    }
 
     // Load package info and shared preferences in parallel to minimize cold-start delay
     final results = await Future.wait([
@@ -99,6 +107,13 @@ class AppInitializer {
         await EasyAds.instance.initFirebaseAnalytics(analytics);
       }
       EasyAds.adIdResolver = (adId) => adId.getId;
+      EasyAds.adEnabledChecker =
+          (adUnitType, adIdName, adId) =>
+              FirebaseRemoteConfigService.isAdPlacementEnabled(
+                adUnitType: adUnitType,
+                adIdName: adIdName,
+                adId: adId,
+              );
 
       await EasyAds.instance.initConsent().timeout(
         const Duration(seconds: 4),
@@ -115,7 +130,7 @@ class AppInitializer {
             adIdManager,
             navigatorKey: navigatorKey,
             unityTestMode: !isProd,
-            adMobAdRequest: const AdRequest(httpTimeoutMillis: 30000),
+            adMobAdRequest: const AdRequest(httpTimeoutMillis: 6000),
             admobConfiguration: RequestConfiguration(testDeviceIds: const []),
             loadingSplash: const AdLoadingPage(),
           )
@@ -130,6 +145,14 @@ class AppInitializer {
         appOpenAdUnitId: MyAdIdName.appOpenResume.getId,
         appOpenAdIdName: MyAdIdName.appOpenResume,
       );
+      if (AppConstants.isPremiumUser.value) {
+        EasyAds.instance.setPremiumUser(true);
+      }
+      EasyAds.instance.appLifecycleReactor?.setAllowAppOpenAd(true);
+      if (!AppConstants.isPremiumUser.value &&
+          FirebaseRemoteConfigService.appOpenResumeEnabled) {
+        EasyAds.instance.loadAppOpenAd();
+      }
 
       EasyAds.instance.onEvent.listen((event) {
         Ad? adObj;
@@ -151,6 +174,16 @@ class AppInitializer {
       debugPrint('EasyAds & AdMob initialized successfully.');
     } catch (e) {
       debugPrint('EasyAds initialization error: $e');
+    }
+  }
+}
+
+class _RemoteConfigLifecycleObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(AppScreenUtils.applyImmersiveMode());
+      unawaited(FirebaseRemoteConfigService.refreshInBackground());
     }
   }
 }
