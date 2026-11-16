@@ -177,6 +177,22 @@ class DramaSecurityDioInterceptor extends Interceptor {
 
     response.data = body;
 
+    if (kDebugMode) {
+      final path = response.requestOptions.uri.toString();
+      String preview;
+      try {
+        preview = body is String ? body : jsonEncode(body);
+      } catch (_) {
+        preview = body.toString();
+      }
+      if (preview.length > 4000) {
+        preview = '${preview.substring(0, 4000)}... [truncated]';
+      }
+      debugPrint(
+        '[DramaAPI] ${response.statusCode} ${response.requestOptions.method} $path -> $preview',
+      );
+    }
+
     // Nếu là HTTP 402 Paywall -> Ném DramaPaywallException kèm sẵn unlock_options đã giải mã!
     if (response.statusCode == 402 || (body is Map && body['code'] == 402)) {
       final paywallInfo = (body is Map && body['data'] is Map<String, dynamic>)
