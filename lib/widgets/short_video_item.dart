@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
@@ -39,6 +40,7 @@ class ShortVideoItem extends ConsumerStatefulWidget {
   final void Function(int posSec, int durSec, bool isPlaying)? onPlaybackUpdate;
   final void Function(List<String> subLangs)? onSubtitlesLoaded;
   final void Function(int episodeNo, bool visible)? onPaywallVisibilityChanged;
+  final ValueChanged<bool>? onControlsVisibilityChanged;
 
   const ShortVideoItem({
     super.key,
@@ -58,6 +60,7 @@ class ShortVideoItem extends ConsumerStatefulWidget {
     this.onPlaybackUpdate,
     this.onSubtitlesLoaded,
     this.onPaywallVisibilityChanged,
+    this.onControlsVisibilityChanged,
   });
 
   @override
@@ -66,6 +69,7 @@ class ShortVideoItem extends ConsumerStatefulWidget {
 
 class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     with WidgetsBindingObserver {
+  static const Duration _controlsAutoHideDelay = Duration(seconds: 3);
   static const List<double> _speeds = [1.0, 1.25, 1.5, 2.0, 0.75];
   static const String _icSave = 'assets/icons/ic_player_save.png';
   static const String _icSaveSelected =
@@ -103,12 +107,20 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     _paywall = paywall;
     _blockReason = blockReason;
     _notifyPaywallVisibility(paywall != null);
+    if (paywall != null) {
+      _setControlsVisible(true, scheduleAutoHide: false);
+    }
   }
 
   bool _isPausedByUser = false;
   bool _didTriggerEnd = false;
   bool _didApplyInitialSeek = false;
   bool _isEpisodeSheetOpen = false;
+  bool _isSettingsSheetOpen = false;
+  bool _isScrubbing = false;
+  bool _controlsVisible = true;
+  bool _isAppForeground = true;
+  Timer? _hideControlsTimer;
   bool _hasRequestedPlay = false;
   int _lastTickEmitSec = -1;
 
@@ -117,9 +129,76 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   bool _hasRetried403 = false;
   bool _isRenewingStream = false;
 
+  bool get _canPlayInForeground {
+    final bindingState = WidgetsBinding.instance.lifecycleState;
+    final bindingResumed =
+        bindingState == null || bindingState == AppLifecycleState.resumed;
+    return _isAppForeground && bindingResumed;
+  }
+
+  void _setControlsVisible(bool visible, {bool scheduleAutoHide = true}) {
+    if (_controlsVisible != visible && mounted) {
+      setState(() => _controlsVisible = visible);
+    } else {
+      _controlsVisible = visible;
+    }
+    if (widget.isActive) {
+      widget.onControlsVisibilityChanged?.call(visible);
+    }
+    if (visible && scheduleAutoHide) {
+      _scheduleControlsAutoHide();
+    } else {
+      _hideControlsTimer?.cancel();
+      _hideControlsTimer = null;
+    }
+  }
+
+  void _scheduleControlsAutoHide() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = null;
+    if (!mounted ||
+        !widget.isActive ||
+        !_controlsVisible ||
+        !_isInitialized ||
+        _paywall != null ||
+        _hasError ||
+        _isPausedByUser ||
+        _isScrubbing ||
+        _isEpisodeSheetOpen ||
+        _isSettingsSheetOpen) {
+      return;
+    }
+    _hideControlsTimer = Timer(_controlsAutoHideDelay, () {
+      if (!mounted ||
+          !widget.isActive ||
+          !_isInitialized ||
+          _paywall != null ||
+          _hasError ||
+          _isPausedByUser ||
+          _isScrubbing ||
+          _isEpisodeSheetOpen ||
+          _isSettingsSheetOpen) {
+        return;
+      }
+      _setControlsVisible(false, scheduleAutoHide: false);
+    });
+  }
+
+  void _onVideoAreaTap() {
+    if (!_isInitialized || _paywall != null || _hasError) return;
+    if (_controlsVisible) {
+      _setControlsVisible(false, scheduleAutoHide: false);
+    } else {
+      _setControlsVisible(true);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    final initialLifecycle = WidgetsBinding.instance.lifecycleState;
+    _isAppForeground =
+        initialLifecycle == null || initialLifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -136,11 +215,14 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      if (ctrl != null && _isInitialized) {
+      _isAppForeground = false;
+      _hideControlsTimer?.cancel();
+      if (ctrl != null && (_isInitialized || ctrl.value.isInitialized)) {
         _lastPosition = ctrl.value.position;
         unawaited(_safePause(ctrl));
       }
     } else if (state == AppLifecycleState.resumed) {
+      _isAppForeground = true;
       if (!widget.isActive) return;
       final bundle = _streamBundle;
       if (bundle != null && bundle.isExpired) {
@@ -166,9 +248,16 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       _disposeController();
       _resetEpisodeState();
       if (widget.isActive) {
+        widget.onControlsVisibilityChanged?.call(true);
         _initEpisode();
       }
     } else if (oldWidget.isActive != widget.isActive) {
+      if (!widget.isActive) {
+        _hideControlsTimer?.cancel();
+        _hideControlsTimer = null;
+      } else {
+        _setControlsVisible(true, scheduleAutoHide: false);
+      }
       if (widget.isActive &&
           !_hasRequestedPlay &&
           _paywall == null &&
@@ -185,6 +274,10 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   }
 
   void _resetEpisodeState() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = null;
+    _controlsVisible = true;
+    _isScrubbing = false;
     _isLoadingPlay = false;
     _isInitialized = false;
     _hasError = false;
@@ -274,7 +367,9 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   }
 
   Future<void> _safePlay(VideoPlayerController? ctrl) async {
-    if (ctrl == null) return;
+    if (ctrl == null || !mounted || !_canPlayInForeground || !widget.isActive) {
+      return;
+    }
     try {
       await ctrl.play();
     } catch (e) {
@@ -572,12 +667,15 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       widget.onPlaybackUpdate?.call(0, 0, false);
       return;
     }
-    if (widget.isActive && !_isPausedByUser) {
+    if (widget.isActive && !_isPausedByUser && _canPlayInForeground) {
       unawaited(_safePlay(ctrl));
       final posSec = ctrl.value.position.inSeconds;
       final durSec = ctrl.value.duration.inSeconds;
       widget.onPlaybackUpdate?.call(posSec, durSec, true);
+      _scheduleControlsAutoHide();
     } else {
+      _hideControlsTimer?.cancel();
+      _hideControlsTimer = null;
       unawaited(_safePause(ctrl));
       final posSec = ctrl.value.position.inSeconds;
       final durSec = ctrl.value.duration.inSeconds;
@@ -659,8 +757,9 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       _handleExpiredStream(autoPlayAfter: true);
       return;
     }
+    final shouldPause = ctrl.value.isPlaying;
     setState(() {
-      if (ctrl.value.isPlaying) {
+      if (shouldPause) {
         _lastPosition = ctrl.value.position;
         unawaited(_safePause(ctrl));
         _isPausedByUser = true;
@@ -679,17 +778,44 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         );
       }
     });
+    if (shouldPause) {
+      _setControlsVisible(true, scheduleAutoHide: false);
+    } else {
+      _setControlsVisible(true);
+    }
   }
 
   Future<void> _handleOpenEpisodeList() async {
     final cb = widget.onOpenEpisodeList;
     if (cb == null) return;
+    _hideControlsTimer?.cancel();
     setState(() => _isEpisodeSheetOpen = true);
     try {
       await cb();
     } finally {
       if (mounted) {
         setState(() => _isEpisodeSheetOpen = false);
+        _scheduleControlsAutoHide();
+      }
+    }
+  }
+
+  Future<void> _openPlayerSettings(
+    List<String> availableSubLangs, {
+    bool subtitlesOnly = false,
+  }) async {
+    _hideControlsTimer?.cancel();
+    _isSettingsSheetOpen = true;
+    try {
+      await PlayerSettingsSheet.show(
+        context,
+        availableSubLangs: availableSubLangs,
+        subtitlesOnly: subtitlesOnly,
+      );
+    } finally {
+      _isSettingsSheetOpen = false;
+      if (mounted) {
+        _scheduleControlsAutoHide();
       }
     }
   }
@@ -698,6 +824,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     final idx = _speeds.indexOf(currentSpeed);
     final nextSpeed = _speeds[(idx + 1) % _speeds.length];
     ref.read(userWalletProvider.notifier).setPlaybackSpeed(nextSpeed);
+    _scheduleControlsAutoHide();
   }
 
   String _formatSpeed(double speed) {
@@ -807,6 +934,8 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
 
   @override
   void dispose() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = null;
     _notifyPaywallVisibility(false);
     WidgetsBinding.instance.removeObserver(this);
     _disposeController();
@@ -819,7 +948,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     final videoHeight = rawSize.height > 0 ? rawSize.height : 1920.0;
 
     return GestureDetector(
-      onTap: _togglePlayPause,
+      onTap: _onVideoAreaTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox.expand(
         child: FittedBox(
@@ -886,12 +1015,26 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     );
     final activeSubCode = activeSubTrack?.language ?? locale.subtitleLanguage;
     final langOpt = AppStrings.getLanguageOption(activeSubCode);
-    final bottomPad =
-        widget.showFullDramaButton ? 0.0 : MediaQuery.paddingOf(context).bottom;
+
+    final mediaQuery = MediaQuery.of(context);
+    final rawBottomInset = math.max(
+      mediaQuery.padding.bottom,
+      mediaQuery.systemGestureInsets.bottom,
+    );
+    // Keep seekbar well clear of Android's bottom multitasking gesture zone
+    // even under immersiveSticky (where padding.bottom can report 0).
+    final seekBarBottom = widget.showFullDramaButton
+        ? 6.h
+        : math.max(rawBottomInset, 28.h);
+    final controlsContentBottom = seekBarBottom + 32.h;
+
     final totalEps = widget.drama.totalEpisodes > 0
         ? widget.drama.totalEpisodes
         : widget.episodeNo;
     final isLocked = _paywall != null;
+    final showChrome =
+        isLocked || _hasError || !_isInitialized || _controlsVisible;
+    const animDuration = Duration(milliseconds: 220);
 
     return Container(
       color: AppColors.black,
@@ -908,20 +1051,31 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
           else
             _buildLoadingView(),
 
-          // 2. Center Play Icon when paused
-          if (!isLocked && _isInitialized && _isPausedByUser)
-            IgnorePointer(
-              child: Center(
-                child: Container(
-                  padding: EdgeInsets.all(18.w),
-                  decoration: const BoxDecoration(
-                    color: AppColors.overlayMedium,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.play_arrow_rounded,
-                    color: AppColors.textPrimary,
-                    size: 54.sp,
+          // 2. Center Play / Pause Button (visible on tap or when paused; auto-hides in 3s while playing)
+          if (!isLocked && !_hasError && _isInitialized)
+            Center(
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: AnimatedOpacity(
+                  opacity: _controlsVisible ? 1.0 : 0.0,
+                  duration: animDuration,
+                  child: GestureDetector(
+                    onTap: _togglePlayPause,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: EdgeInsets.all(16.w),
+                      decoration: const BoxDecoration(
+                        color: AppColors.overlayMedium,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isPausedByUser
+                            ? Icons.play_arrow_rounded
+                            : Icons.pause_rounded,
+                        color: AppColors.textPrimary,
+                        size: 50.sp,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -934,23 +1088,32 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
             bottom: 0,
             height: 270.h,
             child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.bottomScrimGradient,
+              child: AnimatedOpacity(
+                opacity: showChrome ? 1.0 : 0.0,
+                duration: animDuration,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.bottomScrimGradient,
+                  ),
                 ),
               ),
             ),
           ),
 
-          // 4. Synchronized VTT/SRT Subtitle Overlay
+          // 4. Synchronized VTT/SRT Subtitle Overlay (remains visible in fullscreen)
           if (!isLocked &&
               locale.subtitlesEnabled &&
               _activeSubtitle != null &&
               _activeSubtitle!.isNotEmpty)
-            Positioned(
+            AnimatedPositioned(
+              duration: animDuration,
+              curve: Curves.easeOutCubic,
               left: 20.w,
-              right: widget.showFullDramaButton ? 20.w : 82.w,
-              bottom: (widget.showFullDramaButton ? 168.h : 122.h) + bottomPad,
+              right: (widget.showFullDramaButton || !showChrome) ? 20.w : 82.w,
+              bottom: showChrome
+                  ? controlsContentBottom +
+                      (widget.showFullDramaButton ? 150.h : 106.h)
+                  : seekBarBottom + 14.h,
               child: IgnorePointer(
                 child: Center(
                   child: Container(
@@ -976,69 +1139,75 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
           if (!widget.showFullDramaButton)
             Positioned(
               right: 12.w,
-              bottom: 18.h + bottomPad,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _ActionIconButton(
-                    iconAsset: isFav ? _icSaveSelected : _icSave,
-                    label: isFav
-                        ? locale.tr('saved')
-                        : locale.tr('player_save_short'),
-                    onTap: () {
-                      ref.read(mylistProvider.notifier).toggleFavorite(
-                            widget.drama,
-                            episodeNumber: widget.episodeNo,
-                          );
-                      if (widget.showFullDramaButton && !isFav) {
-                        ref
-                            .read(feedProvider.notifier)
-                            .trackEvent(widget.drama.dramaId, 'favorite');
-                      }
-                    },
+              bottom: controlsContentBottom,
+              child: IgnorePointer(
+                ignoring: !showChrome,
+                child: AnimatedOpacity(
+                  opacity: showChrome ? 1.0 : 0.0,
+                  duration: animDuration,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ActionIconButton(
+                        iconAsset: isFav ? _icSaveSelected : _icSave,
+                        label: isFav
+                            ? locale.tr('saved')
+                            : locale.tr('player_save_short'),
+                        onTap: () {
+                          ref.read(mylistProvider.notifier).toggleFavorite(
+                                widget.drama,
+                                episodeNumber: widget.episodeNo,
+                              );
+                          _scheduleControlsAutoHide();
+                        },
+                      ),
+                      SizedBox(height: 15.h),
+                      if (widget.onOpenEpisodeList != null) ...[
+                        _ActionIconButton(
+                          iconAsset: _isEpisodeSheetOpen
+                              ? _icEpisodesSelected
+                              : _icEpisodes,
+                          label: '$totalEps ${locale.tr('player_eps_short')}',
+                          onTap: _handleOpenEpisodeList,
+                        ),
+                        SizedBox(height: 15.h),
+                      ],
+                      _ActionIconButton(
+                        iconAsset: hasPlayableSubs && locale.subtitlesEnabled
+                            ? _icSubtitleSelected
+                            : _icSubtitle,
+                        label: (!hasPlayableSubs || _isLoadingPlay)
+                            ? locale.tr('sub_label')
+                            : (locale.subtitlesEnabled
+                                ? '${langOpt.flag} ${langOpt.code.toUpperCase()}'
+                                : locale.tr('sub_off')),
+                        onTap: () => unawaited(
+                          _openPlayerSettings(
+                            sheetSubLangs,
+                            subtitlesOnly: true,
+                          ),
+                        ),
+                        onLongPress: hasPlayableSubs
+                            ? () {
+                                ref
+                                    .read(localeProvider.notifier)
+                                    .toggleSubtitlesEnabled();
+                                _scheduleControlsAutoHide();
+                              }
+                            : null,
+                      ),
+                      SizedBox(height: 15.h),
+                      _ActionIconButton(
+                        icon: Icons.speed_rounded,
+                        label: _formatSpeed(playbackSpeed),
+                        onTap: () => _cyclePlaybackSpeed(playbackSpeed),
+                        onLongPress: () => unawaited(
+                          _openPlayerSettings(sheetSubLangs),
+                        ),
+                      ),
+                    ],
                   ),
-                  SizedBox(height: 15.h),
-                  if (widget.onOpenEpisodeList != null) ...[
-                    _ActionIconButton(
-                      iconAsset: _isEpisodeSheetOpen
-                          ? _icEpisodesSelected
-                          : _icEpisodes,
-                      label: '$totalEps ${locale.tr('player_eps_short')}',
-                      onTap: _handleOpenEpisodeList,
-                    ),
-                    SizedBox(height: 15.h),
-                  ],
-                  _ActionIconButton(
-                    iconAsset: hasPlayableSubs && locale.subtitlesEnabled
-                        ? _icSubtitleSelected
-                        : _icSubtitle,
-                    label: (!hasPlayableSubs || _isLoadingPlay)
-                        ? locale.tr('sub_label')
-                        : (locale.subtitlesEnabled
-                            ? '${langOpt.flag} ${langOpt.code.toUpperCase()}'
-                            : locale.tr('sub_off')),
-                    onTap: () => PlayerSettingsSheet.show(
-                      context,
-                      availableSubLangs: sheetSubLangs,
-                      subtitlesOnly: true,
-                    ),
-                    onLongPress: hasPlayableSubs
-                        ? () => ref
-                            .read(localeProvider.notifier)
-                            .toggleSubtitlesEnabled()
-                        : null,
-                  ),
-                  SizedBox(height: 15.h),
-                  _ActionIconButton(
-                    icon: Icons.speed_rounded,
-                    label: _formatSpeed(playbackSpeed),
-                    onTap: () => _cyclePlaybackSpeed(playbackSpeed),
-                    onLongPress: () => PlayerSettingsSheet.show(
-                      context,
-                      availableSubLangs: sheetSubLangs,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
 
@@ -1046,112 +1215,118 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
           Positioned(
             left: 16.w,
             right: widget.showFullDramaButton ? 16.w : 80.w,
-            bottom: 18.h + bottomPad,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 10.w,
-                    vertical: 4.5.h,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: AppColors.badgePrimaryGradient,
-                    borderRadius: BorderRadius.circular(6.r),
-                  ),
-                  child: Text(
-                    '${locale.tr('player_ep_badge')} ${widget.episodeNo} / $totalEps',
-                    style: AppTextStyles.playerEpBadge,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Text(
-                  widget.drama.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.playerDramaTitle,
-                ),
-                if (widget.drama.description.isNotEmpty) ...[
-                  SizedBox(height: 5.h),
-                  Text(
-                    widget.drama.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.playerDramaDesc,
-                  ),
-                ],
-                if (widget.showFullDramaButton &&
-                    widget.onOpenFullDrama != null) ...[
-                  SizedBox(height: 12.h),
-                  GestureDetector(
-                    onTap: widget.onOpenFullDrama,
-                    child: Container(
+            bottom: controlsContentBottom,
+            child: IgnorePointer(
+              ignoring: !showChrome,
+              child: AnimatedOpacity(
+                opacity: showChrome ? 1.0 : 0.0,
+                duration: animDuration,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
                       padding: EdgeInsets.symmetric(
-                        horizontal: 12.w,
-                        vertical: 9.h,
+                        horizontal: 10.w,
+                        vertical: 4.5.h,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.playerGlassButton,
-                        borderRadius: BorderRadius.circular(8.r),
+                        gradient: AppColors.badgePrimaryGradient,
+                        borderRadius: BorderRadius.circular(6.r),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 20.w,
-                            height: 20.w,
-                            alignment: Alignment.center,
-                            decoration: const BoxDecoration(
-                              gradient: AppColors.badgePrimaryGradient,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: AppColors.textPrimary,
-                              size: 14.sp,
-                            ),
-                          ),
-                          SizedBox(width: 8.w),
-                          Flexible(
-                            child: Text(
-                              '${locale.tr('watch_full_drama')} ($totalEps ${locale.tr('player_episodes_full')})',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTextStyles.playerWatchFullBtn,
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        '${locale.tr('player_ep_badge')} ${widget.episodeNo} / $totalEps',
+                        style: AppTextStyles.playerEpBadge,
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    SizedBox(height: 8.h),
+                    Text(
+                      widget.drama.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.playerDramaTitle,
+                    ),
+                    if (widget.drama.description.isNotEmpty) ...[
+                      SizedBox(height: 5.h),
+                      Text(
+                        widget.drama.description,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.playerDramaDesc,
+                      ),
+                    ],
+                    if (widget.showFullDramaButton &&
+                        widget.onOpenFullDrama != null) ...[
+                      SizedBox(height: 12.h),
+                      GestureDetector(
+                        onTap: widget.onOpenFullDrama,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 9.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.playerGlassButton,
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 20.w,
+                                height: 20.w,
+                                alignment: Alignment.center,
+                                decoration: const BoxDecoration(
+                                  gradient: AppColors.badgePrimaryGradient,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: AppColors.textPrimary,
+                                  size: 14.sp,
+                                ),
+                              ),
+                              SizedBox(width: 8.w),
+                              Flexible(
+                                child: Text(
+                                  '${locale.tr('watch_full_drama')} ($totalEps ${locale.tr('player_episodes_full')})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.playerWatchFullBtn,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
 
-          // 7. Edge-to-Edge Bottom Progress Bar
+          // 7. TikTok-style Seek Bar (raised above system multitasking gesture bar)
           if (!isLocked && _isInitialized && _controller != null)
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: bottomPad,
-              child: SizedBox(
-                height: 10.h,
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: SizedBox(
-                    height: 2.5.h,
-                    child: VideoProgressIndicator(
-                      _controller!,
-                      allowScrubbing: true,
-                      padding: EdgeInsets.zero,
-                      colors: const VideoProgressColors(
-                        playedColor: AppColors.playerProgressPlayed,
-                        bufferedColor: AppColors.playerProgressTrack,
-                        backgroundColor: AppColors.playerProgressTrack,
-                      ),
-                    ),
+              left: 14.w,
+              right: 14.w,
+              bottom: seekBarBottom,
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: AnimatedOpacity(
+                  opacity: _controlsVisible ? 1.0 : 0.0,
+                  duration: animDuration,
+                  child: _TikTokVideoSeekBar(
+                    controller: _controller!,
+                    onScrubStart: () {
+                      _isScrubbing = true;
+                      _hideControlsTimer?.cancel();
+                    },
+                    onScrubEnd: () {
+                      _isScrubbing = false;
+                      _scheduleControlsAutoHide();
+                    },
                   ),
                 ),
               ),
@@ -1284,6 +1459,199 @@ class _ActionIconButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TikTokVideoSeekBar extends StatefulWidget {
+  final VideoPlayerController controller;
+  final VoidCallback? onScrubStart;
+  final VoidCallback? onScrubEnd;
+
+  const _TikTokVideoSeekBar({
+    required this.controller,
+    this.onScrubStart,
+    this.onScrubEnd,
+  });
+
+  @override
+  State<_TikTokVideoSeekBar> createState() => _TikTokVideoSeekBarState();
+}
+
+class _TikTokVideoSeekBarState extends State<_TikTokVideoSeekBar> {
+  bool _isDragging = false;
+  double _dragFraction = 0.0;
+  DateTime _lastSeekAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  double _fractionFromOffset(double dx, double width) {
+    if (width <= 0) return 0.0;
+    return (dx / width).clamp(0.0, 1.0);
+  }
+
+  void _seekToFraction(double fraction, Duration duration, {bool force = false}) {
+    if (duration.inMilliseconds <= 0) return;
+    final now = DateTime.now();
+    if (!force && now.difference(_lastSeekAt).inMilliseconds < 120) return;
+    _lastSeekAt = now;
+    final targetMs = (duration.inMilliseconds * fraction).round();
+    unawaited(widget.controller.seekTo(Duration(milliseconds: targetMs)));
+  }
+
+  String _formatDuration(Duration d) {
+    final totalSec = d.inSeconds.clamp(0, 359999);
+    final mins = totalSec ~/ 60;
+    final secs = totalSec % 60;
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: widget.controller,
+      builder: (context, value, _) {
+        final duration = value.duration;
+        final totalMs = duration.inMilliseconds;
+        final currentFraction = totalMs > 0
+            ? (value.position.inMilliseconds / totalMs).clamp(0.0, 1.0)
+            : 0.0;
+        final displayFraction = _isDragging ? _dragFraction : currentFraction;
+        final displayPos = totalMs > 0
+            ? Duration(milliseconds: (totalMs * displayFraction).round())
+            : Duration.zero;
+
+        final trackHeight = _isDragging ? 6.h : 3.h;
+        final thumbSize = _isDragging ? 14.r : 8.r;
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final thumbCenterX = (width * displayFraction).clamp(
+              thumbSize / 2,
+              math.max(thumbSize / 2, width - thumbSize / 2),
+            );
+
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (_isDragging && totalMs > 0)
+                  Positioned(
+                    bottom: 36.h,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 5.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.overlayDark,
+                          borderRadius: BorderRadius.circular(14.r),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '${_formatDuration(displayPos)} / ${_formatDuration(duration)}',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    if (totalMs <= 0) return;
+                    widget.onScrubStart?.call();
+                    final f = _fractionFromOffset(details.localPosition.dx, width);
+                    setState(() => _dragFraction = f);
+                    _seekToFraction(f, duration, force: true);
+                    widget.onScrubEnd?.call();
+                  },
+                  onHorizontalDragStart: (details) {
+                    if (totalMs <= 0) return;
+                    widget.onScrubStart?.call();
+                    setState(() {
+                      _isDragging = true;
+                      _dragFraction = _fractionFromOffset(
+                        details.localPosition.dx,
+                        width,
+                      );
+                    });
+                  },
+                  onHorizontalDragUpdate: (details) {
+                    if (totalMs <= 0) return;
+                    final f = _fractionFromOffset(details.localPosition.dx, width);
+                    setState(() => _dragFraction = f);
+                    _seekToFraction(f, duration);
+                  },
+                  onHorizontalDragEnd: (_) {
+                    if (!_isDragging) return;
+                    _seekToFraction(_dragFraction, duration, force: true);
+                    setState(() => _isDragging = false);
+                    widget.onScrubEnd?.call();
+                  },
+                  onHorizontalDragCancel: () {
+                    if (!_isDragging) return;
+                    setState(() => _isDragging = false);
+                    widget.onScrubEnd?.call();
+                  },
+                  child: SizedBox(
+                    height: 32.h,
+                    width: double.infinity,
+                    child: Stack(
+                      alignment: Alignment.centerLeft,
+                      children: [
+                        Container(
+                          height: trackHeight,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: AppColors.playerProgressTrack,
+                            borderRadius: BorderRadius.circular(trackHeight / 2),
+                          ),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: displayFraction,
+                          child: Container(
+                            height: trackHeight,
+                            decoration: BoxDecoration(
+                              color: AppColors.playerProgressPlayed,
+                              borderRadius: BorderRadius.circular(
+                                trackHeight / 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: thumbCenterX - thumbSize / 2,
+                          child: Container(
+                            width: thumbSize,
+                            height: thumbSize,
+                            decoration: BoxDecoration(
+                              color: AppColors.textPrimary,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.black.withValues(alpha: 0.45),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

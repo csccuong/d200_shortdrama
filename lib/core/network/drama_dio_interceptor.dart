@@ -17,6 +17,7 @@ class DramaSecurityDioInterceptor extends Interceptor {
   final Dio dio;
   final DramaCryptoEngine crypto;
   final List<String> fallbackApiUrls;
+  final List<String> Function()? getFallbackApiUrls;
   final String versionCode;
   final String deviceId;
   final String Function() getAppLanguage;
@@ -27,6 +28,7 @@ class DramaSecurityDioInterceptor extends Interceptor {
     required this.dio,
     required this.crypto,
     this.fallbackApiUrls = const [],
+    this.getFallbackApiUrls,
     required this.versionCode,
     required this.deviceId,
     required this.getAppLanguage,
@@ -118,15 +120,16 @@ class DramaSecurityDioInterceptor extends Interceptor {
     final isConnErr = err.type == DioExceptionType.connectionError ||
         err.type == DioExceptionType.connectionTimeout;
     final fbIdx = (err.requestOptions.extra['_drama_fb_idx'] as int?) ?? 0;
+    final fallbacks = getFallbackApiUrls?.call() ?? fallbackApiUrls;
 
     DioException finalErr = err;
-    if (isConnErr && fbIdx < fallbackApiUrls.length) {
-      final nextBase = fallbackApiUrls[fbIdx];
-      dio.options.baseUrl = nextBase;
+    if (isConnErr && fbIdx < fallbacks.length) {
+      final nextBase = fallbacks[fbIdx];
       final retryOpts = err.requestOptions..baseUrl = nextBase;
       retryOpts.extra['_drama_fb_idx'] = fbIdx + 1;
       try {
         final retryResp = await dio.fetch(retryOpts);
+        dio.options.baseUrl = nextBase;
         return handler.resolve(retryResp);
       } on DioException catch (retryErr) {
         finalErr = retryErr;

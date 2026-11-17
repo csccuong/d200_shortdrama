@@ -56,6 +56,8 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
   int _lastDurSec = 0;
   bool _isChildPlaying = false;
   bool _didUseInitialSeek = false;
+  bool _controlsVisible = true;
+  DramaCard? _latestDramaCard;
 
   String get _resolvedDramaId =>
       widget.dramaId ?? widget.dramaCard?.dramaId ?? '';
@@ -63,6 +65,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    _latestDramaCard = widget.dramaCard;
     final safeInitialEp = widget.initialEpisode < 1 ? 1 : widget.initialEpisode;
     _currentEpisode = safeInitialEp;
     _pageController = PageController(initialPage: safeInitialEp - 1);
@@ -106,6 +109,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
               episodeNumber: episodeNumber,
               positionSec: _lastPosSec,
               durationSec: _lastDurSec,
+              drama: _latestDramaCard,
             ),
       );
     }
@@ -149,24 +153,29 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     final pos = _lastPosSec;
     final dur = _lastDurSec;
     final id = _resolvedDramaId;
+    final drama = _latestDramaCard;
     if (id.isNotEmpty) {
+      // Capture notifiers synchronously before super.dispose() invalidates ref.
+      final mylistNotifier = ref.read(mylistProvider.notifier);
+      final appApi = ref.read(appApiServiceProvider);
       unawaited(
-        Future(() async {
+        Future.microtask(() async {
           try {
-            await ref.read(mylistProvider.notifier).saveHistory(
-                  dramaId: id,
-                  episodeNumber: ep,
-                  positionSec: pos,
-                  durationSec: dur,
-                );
+            await mylistNotifier.saveHistory(
+              dramaId: id,
+              episodeNumber: ep,
+              positionSec: pos,
+              durationSec: dur,
+              drama: drama,
+            );
             if (delta > 0) {
-              await ref.read(appApiServiceProvider).heartbeat(
-                    watchSecondsDelta: delta,
-                    dramaId: id,
-                    episodeNumber: ep,
-                    positionSec: pos,
-                    durationSec: dur,
-                  );
+              await appApi.heartbeat(
+                watchSecondsDelta: delta,
+                dramaId: id,
+                episodeNumber: ep,
+                positionSec: pos,
+                durationSec: dur,
+              );
             }
           } catch (_) {}
         }),
@@ -306,6 +315,9 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     final detailData = detailAsync.asData?.value;
 
     final effectiveDrama = detailData?.dramaDetail ?? widget.dramaCard;
+    if (effectiveDrama != null) {
+      _latestDramaCard = effectiveDrama;
+    }
     final episodes = detailData?.episodes.items ?? const <EpisodeItem>[];
     final isVipUser = (detailData?.episodes.isUserVip ?? false) ||
         ref.watch(walletProvider.select((s) => s.isVip));
@@ -370,6 +382,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                 _lastDurSec = 0;
                 _didUseInitialSeek = true;
                 _isChildPlaying = false;
+                _controlsVisible = true;
               });
               ref.read(eventTrackerProvider).track(
                 'episode_start',
@@ -400,6 +413,21 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
                     _openEpisodeSheet(effectiveDrama, episodes, isVipUser),
                 showFullDramaButton: false,
                 requiredUnlockEpisode: requiredUnlockEp,
+                onControlsVisibilityChanged: (visible) {
+                  if (!mounted || epNo != _currentEpisode || _controlsVisible == visible) {
+                    return;
+                  }
+                  if (SchedulerBinding.instance.schedulerPhase ==
+                      SchedulerPhase.persistentCallbacks) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && epNo == _currentEpisode) {
+                        setState(() => _controlsVisible = visible);
+                      }
+                    });
+                  } else {
+                    setState(() => _controlsVisible = visible);
+                  }
+                },
                 onPaywallVisibilityChanged: (ep, visible) {
                   if (!mounted) return;
                   final changed = visible
@@ -445,43 +473,59 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
             top: 0,
             left: 0,
             right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(
-                        AppScreenUtils.isIOS
-                            ? Icons.arrow_back_ios_new_rounded
-                            : Icons.arrow_back_rounded,
-                        color: AppColors.textPrimary,
-                        size: 20.sp,
+            child: Builder(
+              builder: (context) {
+                final showTopBar =
+                    _controlsVisible || _paywallEpisodes.contains(_currentEpisode);
+                return IgnorePointer(
+                  ignoring: !showTopBar,
+                  child: AnimatedOpacity(
+                    opacity: showTopBar ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 8.w,
+                          vertical: 6.h,
+                        ),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: Icon(
+                                AppScreenUtils.isIOS
+                                    ? Icons.arrow_back_ios_new_rounded
+                                    : Icons.arrow_back_rounded,
+                                color: AppColors.textPrimary,
+                                size: 20.sp,
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    effectiveDrama.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: AppTextStyles.playerHeaderTitle,
+                                  ),
+                                  Text(
+                                    '${locale.tr('episode_prefix')} $_currentEpisode / $totalEpisodes',
+                                    style: AppTextStyles.playerHeaderSubtitle,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    Expanded(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            effectiveDrama.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.playerHeaderTitle,
-                          ),
-                          Text(
-                            '${locale.tr('episode_prefix')} $_currentEpisode / $totalEpisodes',
-                            style: AppTextStyles.playerHeaderSubtitle,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
           ),
           FloatingDramaNativeAd(

@@ -3,13 +3,16 @@ import 'dart:io' show Platform;
 
 import 'package:easy_ads_flutter/easy_ads_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../ads/placement/show_placement_ad.dart';
 import '../core/constants/app_constants.dart';
 import '../models/iap_models.dart';
 
 enum IapPurchaseOutcome {
   success,
+  pending,
   canceled,
   storeUnavailable,
   productNotFound,
@@ -45,6 +48,11 @@ class IapService {
   StreamSubscription<List<PurchaseDetails>>? _purchaseSub;
   final Map<String, ProductDetails> _productsById = {};
   final Map<String, Completer<IapPurchaseResult>> _pendingCompleters = {};
+  bool? _storeAvailable;
+  Future<void>? _inFlightInit;
+  Future<Map<String, ProductDetails>>? _inFlightCatalogQuery;
+  Timer? _resumeGraceTimer;
+  bool _sawPendingPurchaseStatus = false;
 
   VerifyPurchaseCallback? _onVerifyPurchase;
   void Function(IapPurchaseResult result)? _onBackgroundPurchase;
@@ -67,6 +75,30 @@ class IapService {
   Map<String, ProductDetails> get cachedProducts =>
       Map.unmodifiable(_productsById);
 
+  Set<String> _catalogProductIds(IapCatalog catalog) {
+    final subs = catalog.subscriptions.isNotEmpty
+        ? catalog.subscriptions
+        : IapCatalog.defaultVipSubscriptions;
+    return subs
+        .map((s) => s.productId.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+  }
+
+  /// Returns true when every subscription product in [catalog] is already cached.
+  bool hasAllCatalogProducts(IapCatalog catalog) {
+    final ids = _catalogProductIds(catalog);
+    return ids.isNotEmpty && ids.every(_productsById.containsKey);
+  }
+
+  Future<bool> _ensureStoreAvailable() async {
+    final cached = _storeAvailable;
+    if (cached == true) return true;
+    final available = await _iap.isAvailable();
+    _storeAvailable = available;
+    return available;
+  }
+
   /// Starts listening to `purchaseStream` and binds backend verification.
   Future<void> initialize({
     required VerifyPurchaseCallback onVerifyPurchase,
@@ -76,13 +108,25 @@ class IapService {
     _onBackgroundPurchase = onBackgroundPurchase;
     if (_purchaseSub != null || !_isStoreSupportedPlatform) return;
 
+    final existing = _inFlightInit;
+    if (existing != null) return existing;
+
+    final future = _runInitialize().whenComplete(() {
+      _inFlightInit = null;
+    });
+    _inFlightInit = future;
+    return future;
+  }
+
+  Future<void> _runInitialize() async {
+    if (_purchaseSub != null) return;
     try {
-      final available = await _iap.isAvailable();
+      final available = await _ensureStoreAvailable();
       if (!available) {
         debugPrint('IapService.initialize: store is unavailable');
         return;
       }
-      _purchaseSub = _iap.purchaseStream.listen(
+      _purchaseSub ??= _iap.purchaseStream.listen(
         (purchases) => unawaited(_handlePurchaseUpdates(purchases)),
         onError: (Object error, StackTrace st) {
           debugPrint('IapService.purchaseStream error: $error\n$st');
@@ -90,27 +134,36 @@ class IapService {
         },
       );
     } catch (e) {
+      _storeAvailable = null;
       debugPrint('IapService.initialize error: $e');
     }
   }
 
   /// Queries Google Play / App Store product details for all items in [catalog].
   Future<Map<String, ProductDetails>> queryCatalogProducts(
-    IapCatalog catalog,
-  ) async {
+    IapCatalog catalog, {
+    bool forceRefresh = false,
+  }) async {
     if (!_isStoreSupportedPlatform) return const {};
 
-    final subs = catalog.subscriptions.isNotEmpty
-        ? catalog.subscriptions
-        : IapCatalog.defaultVipSubscriptions;
-    final ids = subs
-        .map((s) => s.productId.trim())
-        .where((id) => id.isNotEmpty)
-        .toSet();
-    if (ids.isEmpty) return cachedProducts;
+    final ids = _catalogProductIds(catalog);
+    if (ids.isEmpty || (!forceRefresh && ids.every(_productsById.containsKey))) {
+      return cachedProducts;
+    }
 
+    final existing = _inFlightCatalogQuery;
+    if (existing != null) return existing;
+
+    final future = _runCatalogQuery(ids).whenComplete(() {
+      _inFlightCatalogQuery = null;
+    });
+    _inFlightCatalogQuery = future;
+    return future;
+  }
+
+  Future<Map<String, ProductDetails>> _runCatalogQuery(Set<String> ids) async {
     try {
-      final available = await _iap.isAvailable();
+      final available = await _ensureStoreAvailable();
       if (!available) {
         debugPrint('IapService.queryCatalogProducts: store is unavailable');
         return const {};
@@ -148,6 +201,7 @@ class IapService {
         }
       }
     } catch (e) {
+      _storeAvailable = null;
       debugPrint('IapService.queryCatalogProducts exception: $e');
     }
     return cachedProducts;
@@ -197,32 +251,72 @@ class IapService {
 
       final completer = Completer<IapPurchaseResult>();
       _pendingCompleters[productId] = completer;
+      _sawPendingPurchaseStatus = false;
+      _resumeGraceTimer?.cancel();
 
-      final param = PurchaseParam(productDetails: product);
-      final launched = isConsumable
-          ? await _iap.buyConsumable(purchaseParam: param, autoConsume: true)
-          : await _iap.buyNonConsumable(purchaseParam: param);
-
-      if (!launched) {
-        _pendingCompleters.remove(productId);
-        return IapPurchaseResult(
-          outcome: IapPurchaseOutcome.error,
-          productId: productId,
-          message: 'Unable to start store billing flow',
-        );
+      final releaseAdGuard = suppressAppOpenAdsOnResume(excludeNextResume: true);
+      final lifecycleObserver = !AppConstants.isFlutterTest
+          ? _IapResumeObserver(
+              onResumedFromStore: () {
+                if (completer.isCompleted || _sawPendingPurchaseStatus) return;
+                _resumeGraceTimer?.cancel();
+                _resumeGraceTimer = Timer(const Duration(seconds: 4), () {
+                  if (!completer.isCompleted &&
+                      !_sawPendingPurchaseStatus &&
+                      _pendingCompleters.containsKey(productId)) {
+                    debugPrint(
+                      'IapService: resumed from store without purchase update; canceling pending $productId',
+                    );
+                    cancelPendingPurchases(
+                      reason: 'Store billing dismissed without purchase update',
+                    );
+                  }
+                });
+              },
+              onBackgrounded: () => _resumeGraceTimer?.cancel(),
+            )
+          : null;
+      if (lifecycleObserver != null) {
+        WidgetsBinding.instance.addObserver(lifecycleObserver);
       }
 
-      return await completer.future.timeout(
-        const Duration(minutes: 5),
-        onTimeout: () {
+      try {
+        debugPrint(
+          'IapService.buyProduct launching $productId (${product.price})',
+        );
+        final param = PurchaseParam(productDetails: product);
+        final launched = isConsumable
+            ? await _iap.buyConsumable(purchaseParam: param, autoConsume: true)
+            : await _iap.buyNonConsumable(purchaseParam: param);
+
+        if (!launched) {
           _pendingCompleters.remove(productId);
           return IapPurchaseResult(
             outcome: IapPurchaseOutcome.error,
             productId: productId,
-            message: 'Purchase timed out',
+            message: 'Unable to start store billing flow',
           );
-        },
-      );
+        }
+
+        return await completer.future.timeout(
+          const Duration(minutes: 5),
+          onTimeout: () {
+            _pendingCompleters.remove(productId);
+            return IapPurchaseResult(
+              outcome: IapPurchaseOutcome.error,
+              productId: productId,
+              message: 'Purchase timed out',
+            );
+          },
+        );
+      } finally {
+        _resumeGraceTimer?.cancel();
+        _resumeGraceTimer = null;
+        if (lifecycleObserver != null) {
+          WidgetsBinding.instance.removeObserver(lifecycleObserver);
+        }
+        releaseAdGuard();
+      }
     } catch (e) {
       _pendingCompleters.remove(productId);
       debugPrint('IapService.buyProduct error ($productId): $e');
@@ -234,24 +328,59 @@ class IapService {
     }
   }
 
+  /// Cancels any in-flight purchase completer (e.g., when user dismisses the paywall).
+  void cancelPendingPurchases({String reason = 'Purchase canceled'}) {
+    _resumeGraceTimer?.cancel();
+    _resumeGraceTimer = null;
+    _completeAllPending(IapPurchaseOutcome.canceled, reason);
+  }
+
   /// Triggers Google Play / Store purchase restoration; updates arrive via [purchaseStream].
-  Future<bool> restorePurchases() async {
+  Future<bool> restorePurchases({bool silent = false}) async {
     if (!_isStoreSupportedPlatform) return false;
+    final releaseAdGuard = silent
+        ? null
+        : suppressAppOpenAdsOnResume(excludeNextResume: true);
     try {
-      final available = await _iap.isAvailable();
+      final available = await _ensureStoreAvailable();
       if (!available) return false;
       await _iap.restorePurchases();
       return true;
     } catch (e) {
       debugPrint('IapService.restorePurchases error: $e');
       return false;
+    } finally {
+      releaseAdGuard?.call();
     }
+  }
+
+  bool _isAlreadyOwnedError(PurchaseDetails purchase) {
+    final msg = (purchase.error?.message ?? '').toLowerCase();
+    final details = (purchase.error?.details?.toString() ?? '').toLowerCase();
+    return msg.contains('itemalreadyowned') ||
+        msg.contains('already owned') ||
+        details.contains('itemalreadyowned') ||
+        details.contains('already owned');
   }
 
   Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
+      _resumeGraceTimer?.cancel();
+      debugPrint(
+        'IapService.purchaseUpdate: product=${purchase.productID} '
+        'status=${purchase.status.name} pendingComplete=${purchase.pendingCompletePurchase} '
+        'error=${purchase.error?.code}:${purchase.error?.message}:${purchase.error?.details}',
+      );
       switch (purchase.status) {
         case PurchaseStatus.pending:
+          _sawPendingPurchaseStatus = true;
+          _resolvePurchase(
+            IapPurchaseResult(
+              outcome: IapPurchaseOutcome.pending,
+              productId: purchase.productID,
+              message: 'Payment is pending confirmation',
+            ),
+          );
           break;
         case PurchaseStatus.canceled:
           await _completeIfPending(purchase);
@@ -264,11 +393,15 @@ class IapService {
           break;
         case PurchaseStatus.error:
           await _completeIfPending(purchase);
+          if (_isAlreadyOwnedError(purchase) && _pendingCompleters.isNotEmpty) {
+            await _recoverAlreadyOwnedPurchase(purchase);
+            break;
+          }
           _resolvePurchase(
             IapPurchaseResult(
               outcome: IapPurchaseOutcome.error,
               productId: purchase.productID,
-              message: purchase.error?.message,
+              message: purchase.error?.message ?? purchase.error?.code,
             ),
           );
           break;
@@ -280,10 +413,37 @@ class IapService {
     }
   }
 
+  Future<void> _recoverAlreadyOwnedPurchase(PurchaseDetails purchase) async {
+    debugPrint(
+      'IapService: itemAlreadyOwned detected — restoring active purchases...',
+    );
+    final pendingKeys = _pendingCompleters.keys.toList();
+    await restorePurchases();
+    // Give restore stream items a moment to hit _verifyAndSettlePurchase.
+    await Future<void>.delayed(const Duration(seconds: 3));
+    for (final key in pendingKeys) {
+      final remaining = _pendingCompleters.remove(key);
+      if (remaining != null && !remaining.isCompleted) {
+        remaining.complete(
+          IapPurchaseResult(
+            outcome: IapPurchaseOutcome.error,
+            productId: key,
+            message:
+                purchase.error?.message ?? 'Subscription already owned on store',
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _verifyAndSettlePurchase(PurchaseDetails purchase) async {
     final token = purchase.verificationData.serverVerificationData.trim();
     final verifier = _onVerifyPurchase;
     if (token.isEmpty || verifier == null) {
+      debugPrint(
+        'IapService._verifyAndSettlePurchase missing token/verifier '
+        '(tokenEmpty=${token.isEmpty}, hasVerifier=${verifier != null})',
+      );
       _resolvePurchase(
         IapPurchaseResult(
           outcome: IapPurchaseOutcome.verificationFailed,
@@ -302,6 +462,9 @@ class IapService {
     }
 
     if (!verified) {
+      debugPrint(
+        'IapService._verifyAndSettlePurchase failed for ${purchase.productID}',
+      );
       // Leave purchase unacknowledged so Play Store can retry later.
       _resolvePurchase(
         IapPurchaseResult(
@@ -339,16 +502,30 @@ class IapService {
   Future<void> _completeIfPending(PurchaseDetails purchase) async {
     if (!purchase.pendingCompletePurchase) return;
     try {
-      await _iap.completePurchase(purchase);
+      await _iap.completePurchase(purchase).timeout(const Duration(seconds: 8));
     } catch (e) {
       debugPrint('IapService.completePurchase error: $e');
     }
   }
 
   void _resolvePurchase(IapPurchaseResult result) {
-    final productId = result.productId;
-    final completer =
-        productId != null ? _pendingCompleters.remove(productId) : null;
+    final productId = result.productId?.trim() ?? '';
+    Completer<IapPurchaseResult>? completer;
+    if (productId.isNotEmpty) {
+      completer = _pendingCompleters.remove(productId);
+    } else if (_pendingCompleters.length == 1) {
+      // Google Play Billing emits empty productID on userCanceled / billing errors.
+      completer = _pendingCompleters.remove(_pendingCompleters.keys.first);
+    } else if (_pendingCompleters.isNotEmpty &&
+        (result.outcome == IapPurchaseOutcome.error ||
+            result.outcome == IapPurchaseOutcome.canceled)) {
+      _completeAllPending(
+        result.outcome,
+        result.message ?? result.outcome.name,
+      );
+      return;
+    }
+
     if (completer != null && !completer.isCompleted) {
       completer.complete(result);
     } else if (result.isSuccess) {
@@ -356,14 +533,17 @@ class IapService {
     }
   }
 
-  void _failAllPending(String message) {
+  void _failAllPending(String message) =>
+      _completeAllPending(IapPurchaseOutcome.error, message);
+
+  void _completeAllPending(IapPurchaseOutcome outcome, String? message) {
     final entries = _pendingCompleters.entries.toList();
     _pendingCompleters.clear();
     for (final entry in entries) {
       if (!entry.value.isCompleted) {
         entry.value.complete(
           IapPurchaseResult(
-            outcome: IapPurchaseOutcome.error,
+            outcome: outcome,
             productId: entry.key,
             message: message,
           ),
@@ -373,8 +553,34 @@ class IapService {
   }
 
   void dispose() {
+    _resumeGraceTimer?.cancel();
+    _resumeGraceTimer = null;
     unawaited(_purchaseSub?.cancel());
     _purchaseSub = null;
     _failAllPending('IAP service disposed');
+  }
+}
+
+class _IapResumeObserver with WidgetsBindingObserver {
+  final VoidCallback onResumedFromStore;
+  final VoidCallback onBackgrounded;
+  bool _sawBackground = false;
+
+  _IapResumeObserver({
+    required this.onResumedFromStore,
+    required this.onBackgrounded,
+  });
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _sawBackground = true;
+      onBackgrounded();
+    } else if (state == AppLifecycleState.resumed && _sawBackground) {
+      _sawBackground = false;
+      onResumedFromStore();
+    }
   }
 }

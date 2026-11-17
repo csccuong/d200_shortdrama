@@ -47,7 +47,10 @@ class MainShellScreen extends ConsumerWidget {
                 isTabActive: currentIndex == 1,
               ),
               const WatchlistScreen(key: ValueKey('tab_2_mylist')),
-              const RewardsScreen(key: ValueKey('tab_3_rewards')),
+              RewardsScreen(
+                key: const ValueKey('tab_3_rewards'),
+                isTabActive: currentIndex == 3,
+              ),
               const ProfileScreen(key: ValueKey('tab_4_profile')),
             ],
           ),

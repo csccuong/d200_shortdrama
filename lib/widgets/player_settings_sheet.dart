@@ -17,12 +17,12 @@ class PlayerSettingsSheet extends ConsumerWidget {
 
   static const List<double> _speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
-  static void show(
+  static Future<void> show(
     BuildContext context, {
     List<String>? availableSubLangs,
     bool subtitlesOnly = false,
   }) {
-    showModalBottomSheet<void>(
+    return showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.transparent,
       isScrollControlled: true,

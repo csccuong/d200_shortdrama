@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../core/security/drama_remote_config_service.dart';
 import '../models/init_response.dart';
+import 'account_provider.dart';
 import 'wallet_provider.dart';
 
 // ============================================================================
@@ -61,10 +64,37 @@ class SessionState {
 
 class SessionNotifier extends AsyncNotifier<SessionState> {
   Future<SessionState>? _inFlightInit;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   @override
   Future<SessionState> build() async {
+    ref.onDispose(() {
+      unawaited(_connectivitySub?.cancel());
+      _connectivitySub = null;
+    });
     return const SessionState();
+  }
+
+  void _listenForConnectivityRecovery() {
+    if (AppConstants.isFlutterTest || _connectivitySub != null) return;
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final hasNetwork = results.any((r) => r != ConnectivityResult.none);
+      if (!hasNetwork) return;
+      if (state.asData?.value.isInitialized == true || _inFlightInit != null) {
+        return;
+      }
+      Future<void>.delayed(const Duration(milliseconds: 400), () {
+        if (state.asData?.value.isInitialized == true || _inFlightInit != null) {
+          return;
+        }
+        unawaited(ensureInitialized());
+      });
+    });
+  }
+
+  void _stopConnectivityListener() {
+    unawaited(_connectivitySub?.cancel());
+    _connectivitySub = null;
   }
 
   /// Runs the full startup flow:
@@ -101,7 +131,14 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
         dio: coordinator.dio,
       );
 
+      _stopConnectivityListener();
       state = AsyncValue.data(sessionState);
+      unawaited(ref.read(accountProvider.notifier).fetchIapCatalog());
+      if (!initResponse.user.isVip) {
+        unawaited(
+          ref.read(accountProvider.notifier).syncActiveStoreSubscriptions(),
+        );
+      }
       return sessionState;
     } on StateError catch (e, st) {
       debugPrint('SessionNotifier.initializeSession StateError: $e');
@@ -109,6 +146,7 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       rethrow;
     } catch (e, st) {
       debugPrint('SessionNotifier.initializeSession error: $e');
+      _listenForConnectivityRecovery();
       final errorState = SessionState(
         isInitialized: false,
         error: AppStrings.genericError(),

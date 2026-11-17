@@ -14,6 +14,41 @@ bool _isVip(WidgetRef ref) {
   return AppConstants.isPremiumUser.value || ref.read(userWalletProvider).isVip;
 }
 
+int _openAdSuppressionDepth = 0;
+
+/// Whether App Open Ads on app resume are temporarily suppressed (e.g. payment UI/IAP flow).
+bool get isAppOpenAdSuppressed => _openAdSuppressionDepth > 0;
+
+/// Suppresses App Open Ads while a payment screen or external store flow is active.
+///
+/// Uses ref-counting so nested payment dialogs and Play/App Store sheets never
+/// re-enable Open Ads prematurely. Returned callback is idempotent.
+VoidCallback suppressAppOpenAdsOnResume({bool excludeNextResume = false}) {
+  _openAdSuppressionDepth++;
+  if (AppConstants.isMobilePlatform) {
+    final reactor = EasyAds.instance.appLifecycleReactor;
+    reactor?.setAllowAppOpenAd(false);
+    if (excludeNextResume) {
+      reactor?.setIsExcludeScreen(true);
+    }
+  }
+  var released = false;
+  return () {
+    if (released) return;
+    released = true;
+    if (_openAdSuppressionDepth > 0) {
+      _openAdSuppressionDepth--;
+    }
+    if (_openAdSuppressionDepth == 0 && AppConstants.isMobilePlatform) {
+      final reactor = EasyAds.instance.appLifecycleReactor;
+      if (excludeNextResume) {
+        reactor?.setIsExcludeScreen(true);
+      }
+      reactor?.setAllowAppOpenAd(true);
+    }
+  };
+}
+
 bool _hasUnit(String adId) => adId.isNotEmpty && adId != 'null';
 
 bool interAllEnabled(WidgetRef ref) {

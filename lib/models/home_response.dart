@@ -57,6 +57,24 @@ class HomeResponse {
     this.categorySections = const [],
   });
 
+  HomeResponse copyWith({
+    List<DramaCard>? continueWatching,
+  }) {
+    return HomeResponse(
+      banners: banners,
+      continueWatching: continueWatching ?? this.continueWatching,
+      trending: trending,
+      mostViewed: mostViewed,
+      mostFavorited: mostFavorited,
+      recommended: recommended,
+      recommendedPagination: recommendedPagination,
+      newReleases: newReleases,
+      vipExclusive: vipExclusive,
+      categories: categories,
+      categorySections: categorySections,
+    );
+  }
+
   factory HomeResponse.fromJson(Map<String, dynamic> json) {
     List<DramaCard> parseCards(dynamic raw) {
       if (raw is! List) return const [];

@@ -7,6 +7,7 @@ import '../ads/const/ad_id_extension.dart';
 import '../ads/const/ad_id_name.dart';
 import '../ads/loading/ad_loading_page.dart';
 import '../ads/manager/my_ad_id_manager.dart';
+import '../ads/placement/show_placement_ad.dart';
 import '../core/constants/app_constants.dart';
 import '../core/helper/firebase_helper.dart';
 import '../core/utils/screen_utils.dart';
@@ -148,7 +149,8 @@ class AppInitializer {
       if (AppConstants.isPremiumUser.value) {
         EasyAds.instance.setPremiumUser(true);
       }
-      EasyAds.instance.appLifecycleReactor?.setAllowAppOpenAd(true);
+      EasyAds.instance.appLifecycleReactor
+          ?.setAllowAppOpenAd(!isAppOpenAdSuppressed);
       if (!AppConstants.isPremiumUser.value &&
           FirebaseRemoteConfigService.appOpenResumeEnabled) {
         EasyAds.instance.loadAppOpenAd();

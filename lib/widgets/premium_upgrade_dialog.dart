@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../ads/placement/show_placement_ad.dart';
 import '../core/utils/screen_utils.dart';
 import '../core/utils/vip_package_helper.dart';
 import '../providers/app_providers.dart';
@@ -70,10 +71,12 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
   int _selectedPlanIndex = 1; // Default: Monthly VIP
   late int _remainingCloseSec;
   Timer? _closeTimer;
+  VoidCallback? _releaseOpenAdSuppression;
 
   @override
   void initState() {
     super.initState();
+    _releaseOpenAdSuppression = suppressAppOpenAdsOnResume();
     _remainingCloseSec = widget.closeDelaySeconds;
     if (_remainingCloseSec > 0) {
       _closeTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -106,6 +109,8 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
 
   @override
   void dispose() {
+    _releaseOpenAdSuppression?.call();
+    _releaseOpenAdSuppression = null;
     _closeTimer?.cancel();
     super.dispose();
   }
@@ -115,6 +120,9 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
   void _closeDialog(bool purchased) {
     if (_didClose || !mounted) return;
     _didClose = true;
+    if (!purchased && ref.read(accountProvider).isPurchasing) {
+      ref.read(accountProvider.notifier).cancelPendingPurchase();
+    }
     Navigator.of(context).pop(purchased);
   }
 
@@ -155,10 +163,15 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
     );
     final safeIdx =
         packages.isEmpty ? 0 : _selectedPlanIndex.clamp(0, packages.length - 1);
-    final canClose = _remainingCloseSec <= 0 && !accountState.isPurchasing;
+    final canTapClose = _remainingCloseSec <= 0;
 
     return PopScope(
-      canPop: canClose,
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop && result != true && ref.read(accountProvider).isPurchasing) {
+          ref.read(accountProvider.notifier).cancelPendingPurchase();
+        }
+      },
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Center(
@@ -220,7 +233,7 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                               top: 10.h,
                               right: 10.w,
                               child: GestureDetector(
-                                onTap: canClose
+                                onTap: canTapClose
                                     ? () => _closeDialog(false)
                                     : null,
                                 child: Container(
@@ -234,7 +247,7 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                                       color: Colors.white.withValues(alpha: 0.2),
                                     ),
                                   ),
-                                  child: canClose
+                                  child: canTapClose
                                       ? Icon(
                                           Icons.close_rounded,
                                           color: AppColors.textPrimary,

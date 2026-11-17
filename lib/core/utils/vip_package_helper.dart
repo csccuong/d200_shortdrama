@@ -104,6 +104,10 @@ class VipPackageHelper {
           productId: package.productId,
           isConsumable: false,
         );
+    debugPrint(
+      'VipPackageHelper.purchaseSubscription: product=${package.productId} '
+      'outcome=${result.outcome.name} msg=${result.message}',
+    );
     if (!context.mounted) return false;
 
     switch (result.outcome) {
@@ -118,6 +122,12 @@ class VipPackageHelper {
           '${locale.tr('activated_vip_toast')}: ${package.title} (${package.price})',
         );
         return true;
+      case IapPurchaseOutcome.pending:
+        AppToast.show(
+          context,
+          result.message ?? 'Payment is pending confirmation on Google Play',
+        );
+        return false;
       case IapPurchaseOutcome.canceled:
         return false;
       case IapPurchaseOutcome.storeUnavailable:

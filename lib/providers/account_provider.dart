@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -61,24 +63,60 @@ class AccountNotifier extends Notifier<AccountState> {
   AccountApiService get _service => inject<AccountApiService>();
   AppStartupCoordinator get _coordinator => inject<AppStartupCoordinator>();
   IapService get _iapService => inject<IapService>();
+  Future<IapCatalog?>? _inFlightCatalog;
+  int _purchaseOpId = 0;
+  bool _didSyncStoreSubscriptions = false;
 
   @override
   AccountState build() => const AccountState();
 
-  void _syncProfileDownstream(UserProfile profile) {
-    ref.read(walletProvider.notifier).updateFromProfile(profile);
+  void _syncProfileDownstream(
+    UserProfile profile, {
+    bool preserveVerifiedVip = false,
+  }) {
+    final effectiveProfile = (preserveVerifiedVip && !profile.isVip)
+        ? UserProfile(
+            userUid: profile.userUid,
+            deviceId: profile.deviceId,
+            authProvider: profile.authProvider,
+            isGuest: profile.isGuest,
+            email: profile.email,
+            displayName: profile.displayName,
+            avatarUrl: profile.avatarUrl,
+            gender: profile.gender,
+            birthYear: profile.birthYear,
+            isVip: true,
+            vipExpiresAt: profile.vipExpiresAt,
+            coinBalance: profile.coinBalance,
+            bonusCoinBalance: profile.bonusCoinBalance,
+            totalCoins: profile.totalCoins,
+            adUnlocksUsedToday: profile.adUnlocksUsedToday,
+            adUnlocksRemainingToday: profile.adUnlocksRemainingToday,
+            todayWatchSeconds: profile.todayWatchSeconds,
+            checkinStreak: profile.checkinStreak,
+            canCheckinToday: profile.canCheckinToday,
+            favoritesCount: profile.favoritesCount,
+            watchLaterCount: profile.watchLaterCount,
+            watchedDramasCount: profile.watchedDramasCount,
+            settings: profile.settings,
+          )
+        : profile;
+    ref.read(walletProvider.notifier).updateFromProfile(effectiveProfile);
     ref.read(userWalletProvider.notifier).syncFromApi(
-          isVip: profile.isVip,
-          autoPlayNext: profile.settings.autoPlayNext,
+          isVip: effectiveProfile.isVip,
+          autoPlayNext: effectiveProfile.settings.autoPlayNext,
         );
   }
 
-  Future<UserProfile?> fetchProfile() async {
+  Future<UserProfile?> fetchProfile({bool preserveVerifiedVip = false}) async {
     state = state.copyWith(isLoadingProfile: true, clearError: true);
     try {
       final profile = await _service.fetchProfile();
       state = state.copyWith(profile: profile, isLoadingProfile: false);
-      _syncProfileDownstream(profile);
+      _syncProfileDownstream(
+        profile,
+        preserveVerifiedVip: preserveVerifiedVip,
+      );
       return profile;
     } catch (e) {
       debugPrint('AccountNotifier.fetchProfile error: $e');
@@ -289,15 +327,42 @@ class AccountNotifier extends Notifier<AccountState> {
     );
   }
 
-  Future<IapCatalog?> fetchIapCatalog({String? lang}) async {
-    state = state.copyWith(isLoadingCatalog: true);
+  Future<IapCatalog?> fetchIapCatalog({
+    String? lang,
+    bool forceRefresh = false,
+  }) async {
     const catalog = IapCatalog(
       subscriptions: IapCatalog.defaultVipSubscriptions,
     );
+    if (!forceRefresh &&
+        state.iapCatalog != null &&
+        _iapService.hasAllCatalogProducts(catalog)) {
+      return state.iapCatalog;
+    }
+
+    final existing = _inFlightCatalog;
+    if (existing != null) return existing;
+
+    final future = _runFetchIapCatalog(catalog, forceRefresh: forceRefresh)
+        .whenComplete(() {
+      _inFlightCatalog = null;
+    });
+    _inFlightCatalog = future;
+    return future;
+  }
+
+  Future<IapCatalog?> _runFetchIapCatalog(
+    IapCatalog catalog, {
+    required bool forceRefresh,
+  }) async {
+    state = state.copyWith(isLoadingCatalog: true, iapCatalog: catalog);
     var storeProducts = _iapService.cachedProducts;
     try {
       await _ensureIapInitialized();
-      storeProducts = await _iapService.queryCatalogProducts(catalog);
+      storeProducts = await _iapService.queryCatalogProducts(
+        catalog,
+        forceRefresh: forceRefresh,
+      );
     } catch (e) {
       debugPrint('AccountNotifier.fetchIapCatalog error: $e');
     } finally {
@@ -308,6 +373,14 @@ class AccountNotifier extends Notifier<AccountState> {
       );
     }
     return catalog;
+  }
+
+  void cancelPendingPurchase() {
+    _purchaseOpId++;
+    _iapService.cancelPendingPurchases();
+    if (state.isPurchasing) {
+      state = state.copyWith(isPurchasing: false);
+    }
   }
 
   Future<IapPurchaseResult> purchaseProduct({
@@ -322,6 +395,7 @@ class AccountNotifier extends Notifier<AccountState> {
       );
     }
 
+    final opId = ++_purchaseOpId;
     state = state.copyWith(isPurchasing: true, clearError: true);
     try {
       await _ensureIapInitialized();
@@ -329,17 +403,21 @@ class AccountNotifier extends Notifier<AccountState> {
         productId,
         isConsumable: isConsumable,
       );
-      state = state.copyWith(
-        isPurchasing: false,
-        storeProducts: _iapService.cachedProducts,
-      );
+      if (opId == _purchaseOpId) {
+        state = state.copyWith(
+          isPurchasing: false,
+          storeProducts: _iapService.cachedProducts,
+        );
+      }
       return result;
     } catch (e) {
       debugPrint('AccountNotifier.purchaseProduct error: $e');
-      state = state.copyWith(
-        isPurchasing: false,
-        errorMessage: AppStrings.genericError(),
-      );
+      if (opId == _purchaseOpId) {
+        state = state.copyWith(
+          isPurchasing: false,
+          errorMessage: AppStrings.genericError(),
+        );
+      }
       return IapPurchaseResult(
         outcome: IapPurchaseOutcome.error,
         productId: productId,
@@ -358,11 +436,38 @@ class AccountNotifier extends Notifier<AccountState> {
     }
   }
 
+  /// Silently queries Google Play / App Store for active subscriptions at startup
+  /// so VIP status is restored even if the initial /v1/app/init payload lagged.
+  Future<void> syncActiveStoreSubscriptions({bool force = false}) async {
+    if (_didSyncStoreSubscriptions && !force) return;
+    _didSyncStoreSubscriptions = true;
+    try {
+      await _ensureIapInitialized();
+      await _iapService.restorePurchases(silent: true);
+    } catch (e) {
+      debugPrint('AccountNotifier.syncActiveStoreSubscriptions error: $e');
+    }
+  }
+
+  Future<void> _refreshAfterVerify({required bool keepVipIfVerified}) async {
+    try {
+      await Future.wait([
+        fetchProfile(preserveVerifiedVip: keepVipIfVerified),
+        ref
+            .read(rewardsProvider.notifier)
+            .fetchOverview(AppConstants.selectedLanguageCode),
+      ]);
+    } catch (refreshErr) {
+      debugPrint(
+        'AccountNotifier.verifyIap post-verify refresh warning: $refreshErr',
+      );
+    }
+  }
+
   Future<bool> verifyIap({
     required String productId,
     required String purchaseToken,
   }) async {
-    state = state.copyWith(isPurchasing: true, clearError: true);
     try {
       final verifyData = await _service.verifyIap(
         productId: productId,
@@ -392,27 +497,11 @@ class AccountNotifier extends Notifier<AccountState> {
             );
       }
 
-      try {
-        await Future.wait([
-          fetchProfile(),
-          ref
-              .read(rewardsProvider.notifier)
-              .fetchOverview(AppConstants.selectedLanguageCode),
-        ]);
-      } catch (refreshErr) {
-        debugPrint(
-          'AccountNotifier.verifyIap post-verify refresh warning: $refreshErr',
-        );
-      }
-
-      state = state.copyWith(isPurchasing: false);
+      unawaited(_refreshAfterVerify(keepVipIfVerified: verifiedVip == true));
       return true;
     } catch (e) {
       debugPrint('AccountNotifier.verifyIap error: $e');
-      state = state.copyWith(
-        isPurchasing: false,
-        errorMessage: AppStrings.genericError(),
-      );
+      state = state.copyWith(errorMessage: AppStrings.genericError());
       return false;
     }
   }

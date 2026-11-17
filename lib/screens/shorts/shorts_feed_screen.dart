@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
 import '../../core/di/injection.dart';
@@ -46,6 +47,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
   int _currentIndex = 0;
   bool _isPushedRouteActive = false;
   bool _isRefreshingExpiredFeed = false;
+  bool _forYouControlsVisible = true;
 
   // Per-slide preview telemetry tracking
   int _activePosSec = 0;
@@ -641,6 +643,8 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     });
 
     final feedItems = feedState.items;
+    final showTopChrome =
+        _topTab != 0 || feedItems.isEmpty || _forYouControlsVisible;
 
     return Stack(
       children: [
@@ -665,9 +669,13 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
             right: 0,
             height: AppScreenUtils.topSafeInset(context) + 64.h,
             child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: AppColors.topHeaderScrimGradient,
+              child: AnimatedOpacity(
+                opacity: showTopChrome ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 220),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: AppColors.topHeaderScrimGradient,
+                  ),
                 ),
               ),
             ),
@@ -678,53 +686,66 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
           top: 0,
           left: 0,
           right: 0,
-          child: SafeArea(
-            bottom: false,
-            child: SizedBox(
-              height: 48.h,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: _MinimalTopTabText(
-                          label: locale.tr('for_you_tab'),
-                          active: _topTab == 0,
-                          onTap: () => setState(() => _topTab = 0),
+          child: IgnorePointer(
+            ignoring: !showTopChrome,
+            child: AnimatedOpacity(
+              opacity: showTopChrome ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 220),
+              child: SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 48.h,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: _MinimalTopTabText(
+                              label: locale.tr('for_you_tab'),
+                              active: _topTab == 0,
+                              onTap: () => setState(() {
+                                _topTab = 0;
+                                _forYouControlsVisible = true;
+                              }),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.center,
-                        child: _MinimalTopTabText(
-                          label: locale.tr('all_dramas_title'),
-                          active: _topTab == 1,
-                          onTap: () {
-                            setState(() => _topTab = 1);
-                            if (_allDramas.isEmpty && !_isLoadingAll) {
-                              unawaited(_loadAllDramas(reset: true));
-                            }
-                          },
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.center,
+                            child: _MinimalTopTabText(
+                              label: locale.tr('all_dramas_title'),
+                              active: _topTab == 1,
+                              onTap: () {
+                                setState(() {
+                                  _topTab = 1;
+                                  _forYouControlsVisible = true;
+                                });
+                                if (_allDramas.isEmpty && !_isLoadingAll) {
+                                  unawaited(_loadAllDramas(reset: true));
+                                }
+                              },
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: _openSearchSheet,
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding: EdgeInsets.all(6.w),
-                        child: Icon(
-                          Icons.search_rounded,
-                          color: AppColors.textPrimary,
-                          size: 24.sp,
+                        GestureDetector(
+                          onTap: _openSearchSheet,
+                          behavior: HitTestBehavior.opaque,
+                          child: Padding(
+                            padding: EdgeInsets.all(6.w),
+                            child: Icon(
+                              Icons.search_rounded,
+                              color: AppColors.textPrimary,
+                              size: 24.sp,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -818,6 +839,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
             _didTrackStart = false;
             _didTrackWatch3s = false;
             _didTrackFinish = false;
+            _forYouControlsVisible = true;
           });
 
           // Prefetch next cursor when reaching last 5 items (doc §6.1)
@@ -852,6 +874,23 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
             sourceScreen: 'for_you',
             isActive: active,
             showFullDramaButton: true,
+            onControlsVisibilityChanged: (visible) {
+              if (!mounted ||
+                  index != _currentIndex ||
+                  _forYouControlsVisible == visible) {
+                return;
+              }
+              if (SchedulerBinding.instance.schedulerPhase ==
+                  SchedulerPhase.persistentCallbacks) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && index == _currentIndex) {
+                    setState(() => _forYouControlsVisible = visible);
+                  }
+                });
+              } else {
+                setState(() => _forYouControlsVisible = visible);
+              }
+            },
             onPreviewExpired: () => unawaited(_refreshForYouIfExpired()),
             onOpenFullDrama: () => _openFullDrama(
               item,

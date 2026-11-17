@@ -7,6 +7,7 @@ import '../models/drama_card.dart';
 import '../models/pagination.dart';
 import '../services/api/drama_api_service.dart';
 import '../services/api/mylist_api_service.dart';
+import 'home_provider.dart';
 
 /// Shared state for Favorites (`My List`), `Watch Later`, `History`, and local `Liked` flags.
 class MyListState {
@@ -352,13 +353,67 @@ class MyListNotifier extends Notifier<MyListState> {
     }
   }
 
+  DramaCard? _findDramaCard(String dramaId) {
+    for (final c in state.history) {
+      if (c.dramaId == dramaId) return c;
+    }
+    for (final c in state.favorites) {
+      if (c.dramaId == dramaId) return c;
+    }
+    for (final c in state.watchLater) {
+      if (c.dramaId == dramaId) return c;
+    }
+    final homeState = ref.read(homeProvider).asData?.value;
+    final homeData = homeState?.homeData;
+    if (homeData != null) {
+      for (final list in [
+        homeData.continueWatching,
+        homeData.banners,
+        homeData.trending,
+        homeData.newReleases,
+        homeData.mostViewed,
+        homeData.mostFavorited,
+        homeData.vipExclusive,
+        homeState!.recommendedDramas,
+      ]) {
+        for (final c in list) {
+          if (c.dramaId == dramaId) return c;
+        }
+      }
+    }
+    return null;
+  }
+
   Future<void> saveHistory({
     required String dramaId,
     required int episodeNumber,
     required int positionSec,
     required int durationSec,
     int watchedDeltaSec = 0,
+    DramaCard? drama,
   }) async {
+    final baseCard = drama ?? _findDramaCard(dramaId);
+    if (baseCard != null && dramaId.isNotEmpty) {
+      final percent = durationSec > 0
+          ? ((positionSec / durationSec) * 100).round().clamp(0, 100)
+          : 0;
+      final updatedCard = baseCard.copyWith(
+        continueWatching: ContinueWatchingInfo(
+          episodeNumber: episodeNumber,
+          positionSec: positionSec,
+          durationSec: durationSec,
+          percentWatched: percent,
+        ),
+      );
+      state = state.copyWith(
+        history: [
+          updatedCard,
+          ...state.history.where((e) => e.dramaId != dramaId),
+        ],
+      );
+      ref.read(homeProvider.notifier).upsertContinueWatching(updatedCard);
+    }
+
     try {
       await _service.saveHistory(
         dramaId: dramaId,
@@ -367,6 +422,9 @@ class MyListNotifier extends Notifier<MyListState> {
         durationSec: durationSec,
         watchedDeltaSec: watchedDeltaSec,
       );
+      if (baseCard == null) {
+        await fetchHistory();
+      }
     } catch (e) {
       debugPrint('MyListNotifier.saveHistory error: $e');
     }

@@ -103,6 +103,23 @@ class HomeNotifier extends AsyncNotifier<HomeState> {
     }
   }
 
+  /// Inserts or moves [card] to the front of Continue Watching immediately.
+  void upsertContinueWatching(DramaCard card) {
+    final current = state.asData?.value;
+    final homeData = current?.homeData;
+    if (current == null || homeData == null || card.dramaId.isEmpty) return;
+
+    final nextList = <DramaCard>[
+      card,
+      ...homeData.continueWatching.where((e) => e.dramaId != card.dramaId),
+    ];
+    state = AsyncValue.data(
+      current.copyWith(
+        homeData: homeData.copyWith(continueWatching: nextList),
+      ),
+    );
+  }
+
   /// Re-fetches home data from scratch.
   Future<void> refresh(String lang) async {
     await fetchHome(lang);

@@ -14,7 +14,12 @@ import '../../widgets/vip_package_card.dart';
 import '../player/drama_player_screen.dart';
 
 class RewardsScreen extends ConsumerStatefulWidget {
-  const RewardsScreen({super.key});
+  final bool isTabActive;
+
+  const RewardsScreen({
+    super.key,
+    this.isTabActive = false,
+  });
 
   @override
   ConsumerState<RewardsScreen> createState() => _RewardsScreenState();
@@ -30,15 +35,43 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   bool _didLoad = false;
   List<DramaCard> _vipDramas = [];
   bool _isLoadingVipDramas = false;
+  VoidCallback? _releaseOpenAdSuppression;
+  bool _isRouteCovered = false;
 
   @override
   void initState() {
     super.initState();
+    _syncOpenAdSuppression();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _didLoad) return;
       _didLoad = true;
       _bootstrapIfSessionReady();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant RewardsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isTabActive != widget.isTabActive) {
+      _syncOpenAdSuppression();
+    }
+  }
+
+  @override
+  void dispose() {
+    _releaseOpenAdSuppression?.call();
+    _releaseOpenAdSuppression = null;
+    super.dispose();
+  }
+
+  void _syncOpenAdSuppression() {
+    final shouldSuppress = widget.isTabActive && !_isRouteCovered;
+    if (shouldSuppress && _releaseOpenAdSuppression == null) {
+      _releaseOpenAdSuppression = suppressAppOpenAdsOnResume();
+    } else if (!shouldSuppress && _releaseOpenAdSuppression != null) {
+      _releaseOpenAdSuppression!.call();
+      _releaseOpenAdSuppression = null;
+    }
   }
 
   void _bootstrapIfSessionReady() {
@@ -88,17 +121,27 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
       sourceScreen: 'rewards',
     );
 
-    showInterAllThen(context, ref, () {
-      ref.read(navigationServiceProvider).push(
-            context,
-            DramaPlayerScreen(
-              dramaCard: drama,
-              dramaId: drama.dramaId,
-              initialEpisode: ep,
-              initialPositionSec: pos,
-              sourceScreen: 'rewards',
-            ),
-          );
+    showInterAllThen(context, ref, () async {
+      if (!mounted) return;
+      _isRouteCovered = true;
+      _syncOpenAdSuppression();
+      try {
+        await ref.read(navigationServiceProvider).push(
+              context,
+              DramaPlayerScreen(
+                dramaCard: drama,
+                dramaId: drama.dramaId,
+                initialEpisode: ep,
+                initialPositionSec: pos,
+                sourceScreen: 'rewards',
+              ),
+            );
+      } finally {
+        if (mounted) {
+          _isRouteCovered = false;
+          _syncOpenAdSuppression();
+        }
+      }
     });
   }
 
@@ -360,50 +403,62 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                   SizedBox(height: 16.h),
 
                   // 3. Full-Width Red Gradient "Continue" CTA
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    child: GestureDetector(
-                      onTap: accountState.isPurchasing
-                          ? null
-                          : () {
-                              final pkg = vipPackages[safePlanIdx];
-                              unawaited(
-                                VipPackageHelper.purchaseSubscription(
-                                  context: context,
-                                  ref: ref,
-                                  package: pkg,
-                                  locale: locale,
-                                  sourceScreen: 'rewards',
-                                ),
-                              );
-                            },
-                      child: Container(
-                        width: double.infinity,
-                        height: 50.h,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(26.r),
-                          border: Border.all(
-                            color: AppColors.textPrimary.withValues(alpha: 0.16),
-                            width: 0.8,
+                  Builder(
+                    builder: (context) {
+                      final isVip = wallet.isVip ||
+                          ref.watch(
+                            userWalletProvider.select((s) => s.isVip),
+                          );
+                      final isBusy = accountState.isPurchasing;
+                      return Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.w),
+                        child: GestureDetector(
+                          onTap: (isBusy || isVip)
+                              ? null
+                              : () {
+                                  final pkg = vipPackages[safePlanIdx];
+                                  unawaited(
+                                    VipPackageHelper.purchaseSubscription(
+                                      context: context,
+                                      ref: ref,
+                                      package: pkg,
+                                      locale: locale,
+                                      sourceScreen: 'rewards',
+                                    ),
+                                  );
+                                },
+                          child: Container(
+                            width: double.infinity,
+                            height: 50.h,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(26.r),
+                              border: Border.all(
+                                color: AppColors.textPrimary
+                                    .withValues(alpha: 0.16),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: isBusy
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  )
+                                : Text(
+                                    isVip
+                                        ? locale.tr('plan_active')
+                                        : locale.tr('reward_continue_btn'),
+                                    style: AppTextStyles.rewardContinueBtn,
+                                  ),
                           ),
                         ),
-                        child: accountState.isPurchasing
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.textPrimary,
-                                ),
-                              )
-                            : Text(
-                                locale.tr('reward_continue_btn'),
-                                style: AppTextStyles.rewardContinueBtn,
-                              ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                   SizedBox(height: 12.h),
                   Padding(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../ads/placement/show_placement_ad.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/screen_utils.dart';
 import '../providers/app_providers.dart';
@@ -28,15 +29,20 @@ class IapSubscriptionFooter extends StatelessWidget {
     required String fallbackContent,
   }) async {
     final uri = Uri.parse(url);
-    for (final mode in const [
-      LaunchMode.inAppBrowserView,
-      LaunchMode.externalApplication,
-    ]) {
-      try {
-        if (await launchUrl(uri, mode: mode)) return;
-      } catch (e) {
-        debugPrint('IapSubscriptionFooter launch ($uri, $mode) error: $e');
+    final releaseAdGuard = suppressAppOpenAdsOnResume(excludeNextResume: true);
+    try {
+      for (final mode in const [
+        LaunchMode.inAppBrowserView,
+        LaunchMode.externalApplication,
+      ]) {
+        try {
+          if (await launchUrl(uri, mode: mode)) return;
+        } catch (e) {
+          debugPrint('IapSubscriptionFooter launch ($uri, $mode) error: $e');
+        }
       }
+    } finally {
+      releaseAdGuard();
     }
     if (!context.mounted) return;
 

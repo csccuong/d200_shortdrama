@@ -35,6 +35,7 @@ class AppStartupCoordinator {
   DramaBootstrapConfig? _bootstrap;
   bool _initialized = false;
   bool _interceptorAdded = false;
+  bool _hadStartupFailure = false;
 
   bool get isInitialized => _initialized;
 
@@ -69,7 +70,7 @@ class AppStartupCoordinator {
   String resolveMediaUrl(String relativeOrFullUrl) {
     final trimmed = relativeOrFullUrl.trim();
     if (trimmed.isEmpty) return '';
-    if (_initialized) return bootstrap.resolveMediaUrl(trimmed);
+    if (_bootstrap != null) return bootstrap.resolveMediaUrl(trimmed);
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
     }
@@ -119,7 +120,9 @@ class AppStartupCoordinator {
   }
 
   /// Khởi động toàn bộ hệ thống theo đúng thứ tự: Remote Config -> Dio -> POST /v1/app/init
-  Future<Map<String, dynamic>> initializeApp() async {
+  Future<Map<String, dynamic>> initializeApp({
+    bool forceBootstrapRefresh = false,
+  }) async {
     final pkgInfo = await PackageInfo.fromPlatform();
     final deviceId = await getOrCreatePersistentDeviceId();
 
@@ -143,7 +146,16 @@ class AppStartupCoordinator {
       }
     }
 
-    if (!_initialized || _bootstrap == null) {
+    if (_hadStartupFailure) {
+      // Clear stale OS sockets / DNS state from previous failed network attempts.
+      try {
+        dio.httpClientAdapter.close(force: true);
+      } catch (_) {}
+      dio.httpClientAdapter = HttpClientAdapter();
+      _hadStartupFailure = false;
+    }
+
+    if (!_initialized || _bootstrap == null || forceBootstrapRefresh) {
       // BƯỚC 0: Đọc & giải mã 9 key phẳng rc_* từ Firebase Remote Config (0% JSON)
       final rcService = DramaRemoteConfigService(
         cryptoEngine: _crypto!,
@@ -160,7 +172,7 @@ class AppStartupCoordinator {
         dio.interceptors.add(DramaSecurityDioInterceptor(
           dio: dio,
           crypto: _crypto!,
-          fallbackApiUrls: fetchedBootstrap.fallbackApiUrls,
+          getFallbackApiUrls: () => bootstrap.fallbackApiUrls,
           versionCode: pkgInfo.buildNumber.isEmpty ? '100' : pkgInfo.buildNumber,
           deviceId: deviceId,
           getAppLanguage: () => AppConstants.selectedLanguageCode,
@@ -169,11 +181,18 @@ class AppStartupCoordinator {
         ));
         _interceptorAdded = true;
       }
-      _initialized = true;
     }
 
     // BƯỚC 1: Gọi POST /v1/app/init
-    return await _performInitHandshake(deviceId, pkgInfo);
+    try {
+      final initData = await _performInitHandshake(deviceId, pkgInfo);
+      _initialized = true;
+      _hadStartupFailure = false;
+      return initData;
+    } catch (_) {
+      _hadStartupFailure = true;
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> _performInitHandshake(
