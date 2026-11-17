@@ -11,11 +11,23 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-val appBuildCode = "D200_ShortDrama"
+val appBuildCode = "D200_Drama"
 val appDisplayName = "Dramota: Short & Dramas Reel"
 val appVersionName = "0.0.3"
 val appVersionCode = 3
-val buildDate = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+val formattedDate: String = SimpleDateFormat("ddMMyyyy", Locale.US).format(Date())
+
+fun releaseArtifactName(
+    versionName: String?,
+    versionCode: Int?,
+    extension: String,
+    abi: String? = null,
+): String {
+    val vName = versionName ?: appVersionName
+    val vCode = versionCode ?: appVersionCode
+    val abiSuffix = if (abi.isNullOrEmpty()) "" else "_$abi"
+    return "${appBuildCode}_${vName}_${vCode}_${formattedDate}${abiSuffix}.$extension"
+}
 
 android {
     namespace = "com.reels.shortdrama.dramaseries.dramota"
@@ -47,6 +59,37 @@ android {
             )
         }
     }
+
+    applicationVariants.all {
+        val variant = this
+        if (variant.buildType.name == "release") {
+            variant.outputs.all {
+                val output = this as? com.android.build.gradle.api.ApkVariantOutput
+                output?.outputFileName =
+                    releaseArtifactName(variant.versionName, variant.versionCode, "apk")
+            }
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (variant.buildType == "release") {
+            variant.outputs.forEach { output ->
+                val abi = output.filters
+                    .find {
+                        it.filterType ==
+                            com.android.build.api.variant.FilterConfiguration.FilterType.ABI
+                    }
+                    ?.identifier
+                val vName = output.versionName.orNull ?: appVersionName
+                val vCode = output.versionCode.orNull ?: appVersionCode
+                (output as? com.android.build.api.variant.impl.VariantOutputImpl)
+                    ?.outputFileName
+                    ?.set(releaseArtifactName(vName, vCode, "apk", abi))
+            }
+        }
+    }
 }
 
 kotlin {
@@ -67,36 +110,19 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
-gradle.projectsEvaluated {
-    val vName = appVersionName.replace(".", "")
-    val vCode = appVersionCode
-    val outputBaseName = "${appBuildCode}_v${vName}_${vCode}_${buildDate}"
-
-    listOf("Debug", "Release", "Profile").forEach { variant ->
-        val mode = variant.lowercase(Locale.US)
-        val suffix = if (mode == "release") "" else "-$mode"
-        tasks.matching { it.name == "assemble$variant" }.configureEach {
-            doLast {
-                val flutterApkDir = layout.buildDirectory.dir("outputs/flutter-apk").get().asFile
-                val flutterApk = File(flutterApkDir, "app-$mode.apk")
-                val rawApk = layout.buildDirectory.file("outputs/apk/$mode/app-$mode.apk").get().asFile
-                val sourceApk = if (flutterApk.exists()) flutterApk else rawApk
-                if (sourceApk.exists()) {
-                    flutterApkDir.mkdirs()
-                    sourceApk.copyTo(File(flutterApkDir, "$outputBaseName$suffix.apk"), overwrite = true)
-                    if (rawApk.exists()) {
-                        rawApk.copyTo(File(rawApk.parentFile, "$outputBaseName$suffix.apk"), overwrite = true)
-                    }
-                }
-            }
-        }
-        tasks.matching { it.name == "bundle$variant" }.configureEach {
-            doLast {
-                val rawAab = layout.buildDirectory.file("outputs/bundle/$mode/app-$mode.aab").get().asFile
-                if (rawAab.exists()) {
-                    rawAab.copyTo(File(rawAab.parentFile, "$outputBaseName$suffix.aab"), overwrite = true)
-                }
-            }
+tasks.matching {
+    (it.name.startsWith("bundle") && it.name.endsWith("Release")) ||
+        it.name == "signReleaseBundle"
+}.configureEach {
+    doLast {
+        val bundleDir = layout.buildDirectory.dir("outputs/bundle/release").get().asFile
+        val targetName = releaseArtifactName(appVersionName, appVersionCode, "aab")
+        bundleDir
+            .listFiles { f -> f.extension == "aab" && f.name.startsWith("app-") && f.name != targetName }
+            ?.forEach { aab ->
+            val targetFile = File(aab.parentFile, targetName)
+            aab.copyTo(targetFile, overwrite = true)
+            println("AAB successfully copied to: ${targetFile.name}")
         }
     }
 }
