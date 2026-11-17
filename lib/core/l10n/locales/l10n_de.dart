@@ -225,6 +225,7 @@ const LanguagePack deLanguagePack = LanguagePack(
     'reward_plan_monthly': 'Monats-VIP',
     'reward_plan_yearly': 'Jahres-VIP',
     'reward_save_30': '30% sparen',
+    'reward_save_pct': '{pct}% sparen',
     'reward_continue_btn': 'Weiter',
     'reward_vip_section': 'VIP-Exklusiv',
     'player_save_short': 'Merken',

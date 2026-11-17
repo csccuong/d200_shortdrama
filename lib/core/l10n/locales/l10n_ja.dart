@@ -213,6 +213,7 @@ const LanguagePack jaLanguagePack = LanguagePack(
     'reward_plan_monthly': '月間 VIP',
     'reward_plan_yearly': '年間 VIP',
     'reward_save_30': '30%お得',
+    'reward_save_pct': '{pct}%お得',
     'reward_continue_btn': '続ける',
     'reward_vip_section': 'VIP限定作品',
     'player_save_short': '保存',

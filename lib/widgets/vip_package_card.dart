@@ -23,88 +23,125 @@ class VipPackageCard extends StatelessWidget {
     final radius = 8.r;
     return GestureDetector(
       onTap: onTap,
-      child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(end: isSelected ? 1.0 : 0.0),
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        builder: (context, selectionProgress, child) {
-          return CustomPaint(
-            painter: _VipPlanCardPainter(
-              selectionProgress: selectionProgress,
-              radius: radius,
-            ),
-            child: child,
-          );
-        },
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: horizontalPadding ?? 8.w,
-            vertical: 14.h,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                package.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.rewardPlanTitle,
-              ),
-              SizedBox(height: 10.h),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  package.price,
-                  style: AppTextStyles.rewardPlanPrice(isSelected: isSelected),
+      child: Padding(
+        padding: EdgeInsets.only(top: 10.h),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: isSelected ? 1.0 : 0.0),
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              builder: (context, selectionProgress, child) {
+                return CustomPaint(
+                  painter: _VipPlanCardPainter(
+                    selectionProgress: selectionProgress,
+                    radius: radius,
+                  ),
+                  child: child,
+                );
+              },
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding ?? 8.w,
+                  18.h,
+                  horizontalPadding ?? 8.w,
+                  14.h,
                 ),
-              ),
-              SizedBox(height: 8.h),
-              if (package.discountBadge != null)
-                Container(
-                  height: 21.h,
-                  padding: EdgeInsets.symmetric(horizontal: 9.w),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(11.r),
-                  ),
-                  child: Text(
-                    package.discountBadge!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.rewardSaveBadge,
-                  ),
-                )
-              else
-                SizedBox(height: 21.h),
-              SizedBox(height: 12.h),
-              Container(
-                width: 20.w,
-                height: 20.w,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.rewardPlanRadioInactive,
-                    width: isSelected ? 1.8 : 1.4,
-                  ),
-                ),
-                child: isSelected
-                    ? Container(
-                        width: 11.w,
-                        height: 11.w,
-                        decoration: const BoxDecoration(
-                          color: AppColors.textPrimary,
-                          shape: BoxShape.circle,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      package.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.rewardPlanTitle,
+                    ),
+                    SizedBox(height: 10.h),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        package.price,
+                        style: AppTextStyles.rewardPlanPrice(
+                          isSelected: isSelected,
                         ),
-                      )
-                    : null,
+                      ),
+                    ),
+                    if (package.periodLabel.isNotEmpty) ...[
+                      SizedBox(height: 2.h),
+                      Text(
+                        package.periodLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: AppTextStyles.captionSmall.copyWith(
+                          color: isSelected
+                              ? AppColors.textPrimary.withValues(alpha: 0.85)
+                              : AppColors.textWhite60,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    SizedBox(height: 14.h),
+                    Container(
+                      width: 20.w,
+                      height: 20.w,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.textPrimary
+                              : AppColors.rewardPlanRadioInactive,
+                          width: isSelected ? 1.8 : 1.4,
+                        ),
+                      ),
+                      child: isSelected
+                          ? Container(
+                              width: 11.w,
+                              height: 11.w,
+                              decoration: const BoxDecoration(
+                                color: AppColors.textPrimary,
+                                shape: BoxShape.circle,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+            if (package.discountBadge != null)
+              Positioned(
+                top: -10.h,
+                left: 4.w,
+                right: 4.w,
+                child: Center(
+                  child: Container(
+                    height: 20.h,
+                    padding: EdgeInsets.symmetric(horizontal: 8.w),
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(10.r),
+                      border: Border.all(
+                        color: AppColors.textPrimary.withValues(alpha: 0.22),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        package.discountBadge!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.rewardSaveBadge,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

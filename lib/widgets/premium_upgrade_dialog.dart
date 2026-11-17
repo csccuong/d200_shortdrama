@@ -31,7 +31,7 @@ class PremiumUpgradeDialog extends ConsumerStatefulWidget {
     final delaySec = (closeDelaySeconds ??
             FirebaseRemoteConfigService.getIntConfigByKey(
               FirebaseRemoteConfigService.time_delay_close_premium,
-              defaultValue: 3,
+              defaultValue: 0,
             ))
         .clamp(0, 15);
 
@@ -408,7 +408,14 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                                       ),
                                     )
                                   : Text(
-                                      locale.tr('reward_continue_btn'),
+                                      VipPackageHelper.buildSubscribeButtonLabel(
+                                        packages.isEmpty
+                                            ? null
+                                            : packages[safeIdx],
+                                        locale,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: AppTextStyles.rewardContinueBtn,
                                     ),
                             ),
@@ -419,6 +426,8 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                           IapSubscriptionFooter(
                             locale: locale,
                             isPurchasing: accountState.isPurchasing,
+                            selectedPackage:
+                                packages.isEmpty ? null : packages[safeIdx],
                             onRestore: () => unawaited(
                               ref
                                   .read(accountProvider.notifier)

@@ -6,21 +6,43 @@ import 'package:url_launcher/url_launcher.dart';
 import '../ads/placement/show_placement_ad.dart';
 import '../core/constants/app_constants.dart';
 import '../core/utils/screen_utils.dart';
+import '../core/utils/vip_package_helper.dart';
 import '../providers/app_providers.dart';
 
-/// Subscription policy disclosure ("Cancel anytime on Google Play") +
+/// Platform-aware subscription auto-renewal disclosure +
 /// clickable Restore Purchases, Terms of Service, and Privacy Policy links.
 class IapSubscriptionFooter extends StatelessWidget {
   final LocaleState locale;
   final bool isPurchasing;
   final VoidCallback onRestore;
+  final RewardVipPackage? selectedPackage;
 
   const IapSubscriptionFooter({
     super.key,
     required this.locale,
     required this.isPurchasing,
     required this.onRestore,
+    this.selectedPackage,
   });
+
+  String _buildRenewalDisclosure() {
+    final pkg = selectedPackage;
+    if (pkg != null &&
+        pkg.price.isNotEmpty &&
+        pkg.price != '...' &&
+        pkg.periodLabel.isNotEmpty) {
+      final key = AppScreenUtils.isIOS
+          ? 'iap_auto_renew_ios'
+          : 'iap_auto_renew_android';
+      return locale
+          .tr(key)
+          .replaceAll('{price}', pkg.price)
+          .replaceAll('{period}', pkg.periodLabel);
+    }
+    return AppScreenUtils.isIOS
+        ? locale.tr('manage_sub_desc')
+        : locale.tr('iap_cancel_anytime');
+  }
 
   Future<void> _openLegalDocument(
     BuildContext context, {
@@ -116,7 +138,7 @@ class IapSubscriptionFooter extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          locale.tr('iap_cancel_anytime'),
+          _buildRenewalDisclosure(),
           textAlign: TextAlign.center,
           style: AppTextStyles.captionSmall.copyWith(
             color: AppColors.textWhite54,

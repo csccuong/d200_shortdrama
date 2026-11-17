@@ -452,7 +452,13 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                                 : Text(
                                     isVip
                                         ? locale.tr('plan_active')
-                                        : locale.tr('reward_continue_btn'),
+                                        : VipPackageHelper
+                                            .buildSubscribeButtonLabel(
+                                            vipPackages[safePlanIdx],
+                                            locale,
+                                          ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: AppTextStyles.rewardContinueBtn,
                                   ),
                           ),
@@ -467,6 +473,7 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
                       child: IapSubscriptionFooter(
                         locale: locale,
                         isPurchasing: accountState.isPurchasing,
+                        selectedPackage: vipPackages[safePlanIdx],
                         onRestore: () =>
                             unawaited(_handleRestorePurchases(locale)),
                       ),

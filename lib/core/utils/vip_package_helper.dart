@@ -13,6 +13,7 @@ class RewardVipPackage {
   final String planKey;
   final String title;
   final String price;
+  final String periodLabel;
   final String? discountBadge;
 
   const RewardVipPackage({
@@ -20,6 +21,7 @@ class RewardVipPackage {
     required this.planKey,
     required this.title,
     required this.price,
+    this.periodLabel = '',
     this.discountBadge,
   });
 }
@@ -51,7 +53,14 @@ class VipPackageHelper {
         planKey: sub.productId,
         title: resolvePlanTitle(sub, locale),
         price: priceStr,
-        discountBadge: resolvePlanBadge(sub, e.key, locale),
+        periodLabel: resolvePlanPeriod(sub, locale),
+        discountBadge: resolvePlanBadge(
+          sub,
+          subs: subs,
+          storeProducts: storeProducts,
+          isLoadingCatalog: isLoadingCatalog,
+          locale: locale,
+        ),
       );
     }).toList();
   }
@@ -81,15 +90,99 @@ class VipPackageHelper {
     return sub.name.isNotEmpty ? sub.name : '${sub.durationDays}d VIP';
   }
 
-  static String? resolvePlanBadge(
-    VipSubscription sub,
-    int index,
+  static String resolvePlanPeriod(VipSubscription sub, LocaleState locale) {
+    final normalized = sub.name.trim().toLowerCase();
+    if (sub.productId == IapCatalog.weeklyProductId ||
+        normalized == 'weekly') {
+      return locale.tr('vip_weekly_period');
+    }
+    if (sub.productId == IapCatalog.monthlyProductId ||
+        normalized == 'monthly') {
+      return locale.tr('vip_monthly_period');
+    }
+    if (sub.productId == IapCatalog.yearlyProductId ||
+        normalized == 'yearly') {
+      return locale.tr('vip_annual_period');
+    }
+    return '/ ${sub.durationDays}d';
+  }
+
+  static String buildSubscribeButtonLabel(
+    RewardVipPackage? package,
     LocaleState locale,
   ) {
-    if (sub.productId == IapCatalog.monthlyProductId || index == 1) {
-      return locale.tr('reward_save_30');
+    final base = locale.tr('subscribe_btn');
+    if (package == null || package.price.isEmpty || package.price == '...') {
+      return base;
     }
-    return null;
+    final period = package.periodLabel.trim();
+    if (period.isEmpty) return '$base • ${package.price}';
+    return '$base • ${package.price} $period';
+  }
+
+  /// Computes a factual savings badge from actual store (or fallback) prices.
+  /// Returns `null` when prices are loading, missing, or not strictly tiered
+  /// (e.g. all plans priced identically at $9.99) to avoid misleading claims.
+  static String? resolvePlanBadge(
+    VipSubscription sub, {
+    required List<VipSubscription> subs,
+    required Map<String, ProductDetails> storeProducts,
+    required bool isLoadingCatalog,
+    required LocaleState locale,
+  }) {
+    final normalized = sub.name.trim().toLowerCase();
+    if (sub.productId == IapCatalog.yearlyProductId ||
+        normalized == 'yearly') {
+      return null;
+    }
+    if (isLoadingCatalog && storeProducts.isEmpty) return null;
+    if (subs.length < 2 || sub.durationDays <= 0) return null;
+
+    final useStorePrices = storeProducts.isNotEmpty;
+    double? effectivePrice(VipSubscription item) {
+      if (useStorePrices) {
+        final pd = storeProducts[item.productId];
+        return (pd != null && pd.rawPrice > 0) ? pd.rawPrice : null;
+      }
+      return item.price > 0 ? item.price : null;
+    }
+
+    final subPrice = effectivePrice(sub);
+    if (subPrice == null) return null;
+
+    VipSubscription? baseline;
+    for (final candidate in subs) {
+      if (candidate.durationDays <= 0) continue;
+      if (baseline == null || candidate.durationDays < baseline.durationDays) {
+        baseline = candidate;
+      }
+    }
+    if (baseline == null || sub.durationDays <= baseline.durationDays) {
+      return null;
+    }
+
+    final baselinePrice = effectivePrice(baseline);
+    if (baselinePrice == null || baselinePrice <= 0) return null;
+
+    // Require strictly increasing total price as duration increases so flat
+    // test/misconfigured prices (e.g. 9.99 / 9.99 / 9.99) never show "Save X%".
+    for (final other in subs) {
+      if (other.durationDays > 0 && other.durationDays < sub.durationDays) {
+        final otherPrice = effectivePrice(other);
+        if (otherPrice == null || subPrice <= otherPrice) {
+          return null;
+        }
+      }
+    }
+
+    final baselinePerDay = baselinePrice / baseline.durationDays;
+    final subPerDay = subPrice / sub.durationDays;
+    if (baselinePerDay <= 0 || subPerDay >= baselinePerDay) return null;
+
+    final pct = ((1.0 - (subPerDay / baselinePerDay)) * 100).round();
+    if (pct < 5 || pct >= 100) return null;
+
+    return locale.tr('reward_save_pct').replaceAll('{pct}', '$pct');
   }
 
   /// Launches Google Play subscription purchase and handles feedback/tracking.

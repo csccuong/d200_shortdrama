@@ -224,6 +224,7 @@ const LanguagePack ptLanguagePack = LanguagePack(
     'reward_plan_monthly': 'VIP Mensal',
     'reward_plan_yearly': 'VIP Anual',
     'reward_save_30': 'Economize 30%',
+    'reward_save_pct': 'Economize {pct}%',
     'reward_continue_btn': 'Continuar',
     'reward_vip_section': 'Exclusivo VIP',
     'player_save_short': 'Salvar',

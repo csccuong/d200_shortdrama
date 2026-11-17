@@ -213,6 +213,7 @@ const LanguagePack koLanguagePack = LanguagePack(
     'reward_plan_monthly': '월간 VIP',
     'reward_plan_yearly': '연간 VIP',
     'reward_save_30': '30% 할인',
+    'reward_save_pct': '{pct}% 할인',
     'reward_continue_btn': '계속하기',
     'reward_vip_section': 'VIP 독점작',
     'player_save_short': '저장',

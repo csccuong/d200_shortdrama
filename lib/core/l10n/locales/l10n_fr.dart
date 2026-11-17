@@ -225,6 +225,7 @@ const LanguagePack frLanguagePack = LanguagePack(
     'reward_plan_monthly': 'VIP Mensuel',
     'reward_plan_yearly': 'VIP Annuel',
     'reward_save_30': '-30% d\'économie',
+    'reward_save_pct': '-{pct}% d\'économie',
     'reward_continue_btn': 'Continuer',
     'reward_vip_section': 'Exclusivité VIP',
     'player_save_short': 'Sauver',

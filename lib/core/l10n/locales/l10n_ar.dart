@@ -221,6 +221,7 @@ const LanguagePack arLanguagePack = LanguagePack(
     'reward_plan_monthly': 'VIP شهري',
     'reward_plan_yearly': 'VIP سنوي',
     'reward_save_30': 'وفر 30%',
+    'reward_save_pct': 'وفر {pct}%',
     'reward_continue_btn': 'متابعة',
     'reward_vip_section': 'حصري لـ VIP',
     'player_save_short': 'حفظ',

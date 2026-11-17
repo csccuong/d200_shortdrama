@@ -222,6 +222,7 @@ const LanguagePack thLanguagePack = LanguagePack(
     'reward_plan_monthly': 'VIP รายเดือน',
     'reward_plan_yearly': 'VIP รายปี',
     'reward_save_30': 'ประหยัด 30%',
+    'reward_save_pct': 'ประหยัด {pct}%',
     'reward_continue_btn': 'ดำเนินการต่อ',
     'reward_vip_section': 'ละครพิเศษ VIP',
     'player_save_short': 'บันทึก',

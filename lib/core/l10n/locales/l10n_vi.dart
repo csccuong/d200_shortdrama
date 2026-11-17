@@ -228,10 +228,15 @@ const LanguagePack viLanguagePack = LanguagePack(
     'reward_plan_monthly': 'VIP Tháng',
     'reward_plan_yearly': 'VIP Năm',
     'reward_save_30': 'Tiết kiệm 30%',
+    'reward_save_pct': 'Tiết kiệm {pct}%',
     'reward_continue_btn': 'Tiếp tục',
     'reward_vip_section': 'Độc quyền VIP',
     'iap_cancel_anytime':
         'Gói tự động gia hạn. Hủy bất kỳ lúc nào trên Google Play Store.',
+    'iap_auto_renew_android':
+        'Tự động gia hạn {price} {period} cho đến khi hủy. Hủy bất kỳ lúc nào trên Google Play Store.',
+    'iap_auto_renew_ios':
+        'Thanh toán qua Apple ID khi xác nhận. Tự động gia hạn {price} {period} trừ khi hủy ít nhất 24 giờ trước khi hết hạn. Quản lý trong Cài đặt tài khoản App Store.',
     'iap_restore_purchases': 'Khôi phục giao dịch',
     'player_save_short': 'Lưu',
     'player_ep_badge': 'Tập',

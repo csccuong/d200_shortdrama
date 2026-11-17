@@ -222,10 +222,15 @@ const LanguagePack enLanguagePack = LanguagePack(
     'reward_plan_monthly': 'Monthly VIP',
     'reward_plan_yearly': 'Yearly VIP',
     'reward_save_30': 'Save 30%',
+    'reward_save_pct': 'Save {pct}%',
     'reward_continue_btn': 'Continue',
     'reward_vip_section': 'VIP Exclusive',
     'iap_cancel_anytime':
         'Auto-renewable subscription. Cancel anytime in Google Play Store.',
+    'iap_auto_renew_android':
+        'Auto-renews at {price} {period} until canceled. Cancel anytime in Google Play Store.',
+    'iap_auto_renew_ios':
+        'Payment is charged to your Apple ID at confirmation. Auto-renews at {price} {period} unless canceled at least 24h before period ends. Manage in App Store Account Settings.',
     'iap_restore_purchases': 'Restore Purchases',
     'player_save_short': 'Save',
     'player_ep_badge': 'Ep',
