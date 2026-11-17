@@ -49,11 +49,18 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
   bool _isRefreshingExpiredFeed = false;
   bool _forYouControlsVisible = true;
 
+  static const int _minHistoryWatchSec = 5;
+
   // Per-slide preview telemetry tracking
   int _activePosSec = 0;
+  int _activeDurSec = 0;
+  int _activeWatchedSec = 0;
+  int _lastObservedPosSec = -1;
   bool _didTrackStart = false;
   bool _didTrackWatch3s = false;
   bool _didTrackFinish = false;
+  bool _didSaveHistory = false;
+  int _lastSavedHistoryPosSec = 0;
 
   // All Dramas filter & pagination state
   String _selectedCategory = 'all';
@@ -80,9 +87,48 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     });
   }
 
+  void _resetSlideTracking() {
+    _activePosSec = 0;
+    _activeDurSec = 0;
+    _activeWatchedSec = 0;
+    _lastObservedPosSec = -1;
+    _didTrackStart = false;
+    _didTrackWatch3s = false;
+    _didTrackFinish = false;
+    _didSaveHistory = false;
+    _lastSavedHistoryPosSec = 0;
+  }
+
+  void _flushCurrentSlideHistoryIfNeeded() {
+    if (!_didSaveHistory || _activePosSec <= _lastSavedHistoryPosSec) return;
+    final feedItems = ref.read(feedProvider).items;
+    if (_currentIndex < 0 || _currentIndex >= feedItems.length) return;
+    final item = feedItems[_currentIndex];
+    final previewEp = item.preview?.episodeNumber ?? 1;
+    final delta = _activePosSec - _lastSavedHistoryPosSec;
+    _lastSavedHistoryPosSec = _activePosSec;
+    unawaited(
+      ref.read(mylistProvider.notifier).saveHistory(
+            dramaId: item.dramaId,
+            episodeNumber: previewEp,
+            positionSec: _activePosSec,
+            durationSec: _activeDurSec,
+            watchedDeltaSec: delta > 0 ? delta : 0,
+            drama: item,
+          ),
+    );
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      if (widget.isTabActive && _topTab == 0 && !_isPushedRouteActive) {
+        _flushCurrentSlideHistoryIfNeeded();
+      }
+    } else if (state == AppLifecycleState.resumed &&
         widget.isTabActive &&
         _topTab == 0 &&
         !_isPushedRouteActive) {
@@ -93,7 +139,9 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
   @override
   void didUpdateWidget(covariant ShortsFeedScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isTabActive && widget.isTabActive) {
+    if (oldWidget.isTabActive && !widget.isTabActive) {
+      _flushCurrentSlideHistoryIfNeeded();
+    } else if (!oldWidget.isTabActive && widget.isTabActive) {
       _ensureFeedLoaded();
       unawaited(_refreshForYouIfExpired());
       if (_topTab == 1 && _allDramas.isEmpty) {
@@ -126,10 +174,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
       if (mounted) {
         setState(() {
           _currentIndex = 0;
-          _activePosSec = 0;
-          _didTrackStart = false;
-          _didTrackWatch3s = false;
-          _didTrackFinish = false;
+          _resetSlideTracking();
         });
       }
       await ref
@@ -819,6 +864,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
         physics: AppScreenUtils.adaptiveScrollPhysics,
         itemCount: feedItems.length,
         onPageChanged: (idx) {
+          _flushCurrentSlideHistoryIfNeeded();
           if (_currentIndex < feedItems.length && _activePosSec < 3) {
             final prev = feedItems[_currentIndex];
             ref.read(feedProvider.notifier).trackEvent(
@@ -835,10 +881,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
 
           setState(() {
             _currentIndex = idx;
-            _activePosSec = 0;
-            _didTrackStart = false;
-            _didTrackWatch3s = false;
-            _didTrackFinish = false;
+            _resetSlideTracking();
             _forYouControlsVisible = true;
           });
 
@@ -902,6 +945,11 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
             onPlaybackUpdate: (posSec, durSec, isPlaying) {
               if (!active || !isPlaying) return;
               _activePosSec = posSec;
+              _activeDurSec = durSec;
+              if (posSec != _lastObservedPosSec) {
+                _lastObservedPosSec = posSec;
+                _activeWatchedSec++;
+              }
               if (!_didTrackStart) {
                 _didTrackStart = true;
                 ref.read(eventTrackerProvider).track(
@@ -922,6 +970,21 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
                   episodeNumber: previewEp,
                   watchedSec: posSec,
                   sourceScreen: 'for_you',
+                );
+              }
+              if (!_didSaveHistory &&
+                  _activeWatchedSec >= _minHistoryWatchSec) {
+                _didSaveHistory = true;
+                _lastSavedHistoryPosSec = posSec;
+                unawaited(
+                  ref.read(mylistProvider.notifier).saveHistory(
+                        dramaId: item.dramaId,
+                        episodeNumber: previewEp,
+                        positionSec: posSec,
+                        durationSec: durSec,
+                        watchedDeltaSec: _activeWatchedSec,
+                        drama: item,
+                      ),
                 );
               }
             },

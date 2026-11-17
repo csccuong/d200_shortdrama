@@ -36,9 +36,11 @@ class DramaPlayerScreen extends ConsumerStatefulWidget {
   ConsumerState<DramaPlayerScreen> createState() => _DramaPlayerScreenState();
 }
 
-class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
+class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
+    with WidgetsBindingObserver {
   static const int _nativeFullEveryEpisodes = 2;
   static const int _heartbeatIntervalSec = 30;
+  static const int _minHistoryWatchSec = 5;
 
   late PageController _pageController;
   late int _currentEpisode;
@@ -52,6 +54,8 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
 
   Timer? _watchTimer;
   int _watchSecondsDelta = 0;
+  int _dramaWatchedSec = 0;
+  bool _didRecordInitialHistory = false;
   int _lastPosSec = 0;
   int _lastDurSec = 0;
   bool _isChildPlaying = false;
@@ -65,6 +69,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _latestDramaCard = widget.dramaCard;
     final safeInitialEp = widget.initialEpisode < 1 ? 1 : widget.initialEpisode;
     _currentEpisode = safeInitialEp;
@@ -84,11 +89,32 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      final hadActiveProgress = _isChildPlaying || _watchSecondsDelta > 0;
+      _isChildPlaying = false;
+      if (_didRecordInitialHistory && hadActiveProgress) {
+        unawaited(_flushWatchProgress(episodeNumber: _currentEpisode));
+      }
+    }
+  }
+
   void _startHeartbeatTicker() {
     _watchTimer?.cancel();
     _watchTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !_isChildPlaying || _nativeFullOpen) return;
       _watchSecondsDelta++;
+      _dramaWatchedSec++;
+      if (!_didRecordInitialHistory &&
+          _dramaWatchedSec >= _minHistoryWatchSec) {
+        _didRecordInitialHistory = true;
+        unawaited(_flushWatchProgress(episodeNumber: _currentEpisode));
+        return;
+      }
       if (_watchSecondsDelta >= _heartbeatIntervalSec) {
         unawaited(_flushWatchProgress(episodeNumber: _currentEpisode));
       }
@@ -99,10 +125,14 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     required int episodeNumber,
     bool saveHistory = true,
   }) async {
+    // Wait until the user has watched >= 5s before calling /v1/me/history or
+    // /v1/app/heartbeat with drama_id, because either endpoint inserts history.
+    if (!_didRecordInitialHistory || _resolvedDramaId.isEmpty) return;
+
     final delta = _watchSecondsDelta.clamp(0, 180);
     _watchSecondsDelta = 0;
 
-    if (saveHistory && _resolvedDramaId.isNotEmpty) {
+    if (saveHistory) {
       unawaited(
         ref.read(mylistProvider.notifier).saveHistory(
               dramaId: _resolvedDramaId,
@@ -114,7 +144,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
       );
     }
 
-    if (delta <= 0 || _resolvedDramaId.isEmpty) return;
+    if (delta <= 0) return;
 
     try {
       final resp = await ref.read(appApiServiceProvider).heartbeat(
@@ -147,6 +177,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _watchTimer?.cancel();
     final ep = _currentEpisode;
     final delta = _watchSecondsDelta.clamp(0, 180);
@@ -154,7 +185,7 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen> {
     final dur = _lastDurSec;
     final id = _resolvedDramaId;
     final drama = _latestDramaCard;
-    if (id.isNotEmpty) {
+    if (id.isNotEmpty && _didRecordInitialHistory) {
       // Capture notifiers synchronously before super.dispose() invalidates ref.
       final mylistNotifier = ref.read(mylistProvider.notifier);
       final appApi = ref.read(appApiServiceProvider);

@@ -408,18 +408,20 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: 12.h),
-                  _ProfileMenuTile(
-                    icon: Icons.subscriptions_outlined,
-                    title: locale.tr('menu_manage_subscription'),
-                    onTap: () => _showManageSubscriptionSheet(
-                      context,
-                      ref,
-                      locale,
-                      isVip: isVip,
-                      vipSubtitle: locale.tr('vip_enjoy_benefits'),
+                  if (isVip) ...[
+                    SizedBox(height: 12.h),
+                    _ProfileMenuTile(
+                      icon: Icons.subscriptions_outlined,
+                      title: locale.tr('menu_manage_subscription'),
+                      onTap: () => _showManageSubscriptionSheet(
+                        context,
+                        ref,
+                        locale,
+                        isVip: isVip,
+                        vipSubtitle: locale.tr('vip_enjoy_benefits'),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
