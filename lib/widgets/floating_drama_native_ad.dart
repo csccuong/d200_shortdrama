@@ -18,7 +18,7 @@ import '../services/firebase_remote_config_service.dart';
 /// Floating native pip over [DramaPlayerScreen].
 ///
 /// The card loads with the episode, appears immediately when ready, and if
-/// dismissed, re-appears after 20 seconds.
+/// dismissed, re-appears after `capping_time_pip` seconds (default 30s).
 class FloatingDramaNativeAd extends ConsumerStatefulWidget {
   final String dramaSlug;
   final int episodeNo;
@@ -39,7 +39,13 @@ class FloatingDramaNativeAd extends ConsumerStatefulWidget {
 }
 
 class _FloatingDramaNativeAdState extends ConsumerState<FloatingDramaNativeAd> {
-  static const Duration _reShowDelay = Duration(seconds: 20);
+  Duration get _reShowDelay {
+    final sec = FirebaseRemoteConfigService.getIntConfigByKey(
+      FirebaseRemoteConfigService.capping_time_pip,
+      defaultValue: 30,
+    );
+    return Duration(seconds: sec < 0 ? 30 : sec);
+  }
 
   EasyAdBase? _nativeAd;
   Timer? _reShowTimer;
@@ -151,7 +157,7 @@ class _FloatingDramaNativeAdState extends ConsumerState<FloatingDramaNativeAd> {
           _isAdLoaded = false;
           _isDismissed = true;
         });
-        // Sau 20s tự động thử tải lại
+        // Sau capping_time_pip tự động thử tải lại
         _reShowTimer?.cancel();
         _reShowTimer = Timer(_reShowDelay, () {
           if (!mounted || widget.hold || !_canRequestPip) return;
@@ -174,7 +180,7 @@ class _FloatingDramaNativeAdState extends ConsumerState<FloatingDramaNativeAd> {
       });
     }
 
-    // Khi người dùng bấm tắt, sau 20s sẽ tự động tải lại và hiển thị lại
+    // Khi người dùng bấm tắt, sau capping_time_pip sẽ tự động tải lại và hiển thị lại
     _reShowTimer = Timer(_reShowDelay, () {
       if (!mounted || widget.hold) return;
       if (!widget.debugForcePreview && !_canRequestPip) return;

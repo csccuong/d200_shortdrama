@@ -32,6 +32,7 @@ class FirebaseRemoteConfigService {
   static const String native_collap = 'native_collap';
   static const String banner_all = 'banner_all';
   static const String native_pip = 'native_pip';
+  static const String capping_time_pip = 'capping_time_pip';
   static const String native_full = 'native_full';
   static const String reward_all = 'reward_all';
   static const String appopen_resume = 'appopen_resume';
@@ -66,6 +67,7 @@ class FirebaseRemoteConfigService {
     reward_all: true,
     appopen_resume: true,
     interval_inter_ad: 30,
+    capping_time_pip: 30,
     time_delay_close_premium: 3,
   };
 
