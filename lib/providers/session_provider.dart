@@ -10,6 +10,7 @@ import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../core/security/drama_remote_config_service.dart';
 import '../models/init_response.dart';
+import '../services/shared_preference_service.dart';
 import 'account_provider.dart';
 import 'wallet_provider.dart';
 
@@ -120,7 +121,18 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       final deviceId = await coordinator.getOrCreatePersistentDeviceId();
 
       ref.read(walletProvider.notifier).updateFromInitResponse(initResponse);
-      AppConstants.isPremiumUser.value = initResponse.user.isVip;
+
+      if (!initResponse.user.isVip && !AppConstants.isFlutterTest) {
+        await ref
+            .read(accountProvider.notifier)
+            .syncActiveStoreSubscriptions()
+            .timeout(const Duration(seconds: 3), onTimeout: () {});
+      }
+
+      final effectiveVip =
+          initResponse.user.isVip || ref.read(walletProvider).isVip;
+      AppConstants.isPremiumUser.value = effectiveVip;
+      unawaited(SharedPreferenceService.setIsPremiumUser(effectiveVip));
 
       final sessionState = SessionState(
         isInitialized: true,
@@ -134,11 +146,6 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       _stopConnectivityListener();
       state = AsyncValue.data(sessionState);
       unawaited(ref.read(accountProvider.notifier).fetchIapCatalog());
-      if (!initResponse.user.isVip) {
-        unawaited(
-          ref.read(accountProvider.notifier).syncActiveStoreSubscriptions(),
-        );
-      }
       return sessionState;
     } on StateError catch (e, st) {
       debugPrint('SessionNotifier.initializeSession StateError: $e');
@@ -180,7 +187,16 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       final initResponse = InitResponse.fromJson(initDataMap);
 
       ref.read(walletProvider.notifier).updateFromInitResponse(initResponse);
-      AppConstants.isPremiumUser.value = initResponse.user.isVip;
+      if (!initResponse.user.isVip && !AppConstants.isFlutterTest) {
+        await ref
+            .read(accountProvider.notifier)
+            .syncActiveStoreSubscriptions(force: true)
+            .timeout(const Duration(seconds: 3), onTimeout: () {});
+      }
+      final effectiveVip =
+          initResponse.user.isVip || ref.read(walletProvider).isVip;
+      AppConstants.isPremiumUser.value = effectiveVip;
+      unawaited(SharedPreferenceService.setIsPremiumUser(effectiveVip));
 
       state = AsyncValue.data(current.copyWith(
         initData: initResponse,

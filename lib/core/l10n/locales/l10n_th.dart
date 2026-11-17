@@ -195,6 +195,10 @@ const LanguagePack thLanguagePack = LanguagePack(
     'menu_rate_app': 'ให้คะแนนแอป',
     'menu_terms': 'ข้อกำหนดการใช้บริการ',
     'menu_privacy': 'นโยบายความเป็นส่วนตัว',
+    'menu_manage_subscription': 'จัดการการสมัครสมาชิก',
+    'manage_sub_desc':
+        'การสมัครสมาชิกจะถูกเรียกเก็บเงินและจัดการผ่านสโตร์ คุณสามารถยกเลิกการต่ออายุอัตโนมัติหรือขอคืนเงินได้โดยตรงใน Google Play / App Store',
+    'manage_sub_open_store': 'เปิดการสมัครสมาชิกในสโตร์',
     'rate_dialog_desc':
         'ชอบดูละครสั้นบนแอปของเราไหม? แตะเลือกดาวเพื่อให้คะแนนความประทับใจของคุณได้เลย!',
     'rate_submit_btn': 'ส่งคะแนน',

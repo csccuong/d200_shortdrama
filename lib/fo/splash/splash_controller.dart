@@ -106,10 +106,14 @@ class SplashController extends ChangeNotifier {
 
       if (sessionState.isInitialized && initData != null) {
         _apiInitialized = true;
+        final effectiveVip = initData.user.isVip ||
+            ref.read(walletProvider).isVip ||
+            ref.read(userWalletProvider).isVip ||
+            AppConstants.isPremiumUser.value;
 
         ref.read(userWalletProvider.notifier).syncFromApi(
-              isVip: initData.user.isVip,
-              vipPlanName: initData.user.isVip ? 'VIP' : 'FREE',
+              isVip: effectiveVip,
+              vipPlanName: effectiveVip ? 'VIP' : 'FREE',
               autoPlayNext: initData.user.settings.autoPlayNext,
             );
 

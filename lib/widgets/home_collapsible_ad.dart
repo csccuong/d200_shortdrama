@@ -187,10 +187,24 @@ class _HomeCollapsibleAdState extends ConsumerState<HomeCollapsibleAd> {
     super.dispose();
   }
 
+  void _clearAds() {
+    _nativeAd?.dispose();
+    _nativeAd = null;
+    _bannerAd?.dispose();
+    _bannerAd = null;
+    _nativeLoaded = false;
+    _bannerLoaded = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isVip =
         AppConstants.isPremiumUser.value || ref.watch(userWalletProvider).isVip;
+    if (isVip && !widget.debugForcePreview && (_nativeAd != null || _bannerAd != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(_clearAds);
+      });
+    }
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final canShowAds = widget.debugForcePreview || !isVip;
 

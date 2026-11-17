@@ -198,6 +198,10 @@ const LanguagePack deLanguagePack = LanguagePack(
     'menu_rate_app': 'App bewerten',
     'menu_terms': 'Nutzungsbedingungen',
     'menu_privacy': 'Datenschutzrichtlinie',
+    'menu_manage_subscription': 'Abo verwalten',
+    'manage_sub_desc':
+        'Abonnements werden über den Store abgerechnet und verwaltet. Sie können die Verlängerung kündigen oder eine Erstattung bei Google Play / App Store beantragen.',
+    'manage_sub_open_store': 'Store-Abos öffnen',
     'rate_dialog_desc':
         'Gefallen dir die Kurz-Dramen in unserer App? Tippe auf einen Stern, um uns zu bewerten!',
     'rate_submit_btn': 'Absenden',

@@ -197,6 +197,10 @@ const LanguagePack ptLanguagePack = LanguagePack(
     'menu_rate_app': 'Avaliar App',
     'menu_terms': 'Termos de Serviço',
     'menu_privacy': 'Política de Privacidade',
+    'menu_manage_subscription': 'Gerenciar assinatura',
+    'manage_sub_desc':
+        'As assinaturas são cobradas e gerenciadas pela loja. Você pode cancelar a renovação automática ou solicitar reembolso diretamente no Google Play / App Store.',
+    'manage_sub_open_store': 'Abrir assinaturas da loja',
     'rate_dialog_desc':
         'Está gostando dos dramas curtos no app? Toque em uma estrela abaixo para nos avaliar!',
     'rate_submit_btn': 'Enviar',

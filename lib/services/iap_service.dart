@@ -53,6 +53,7 @@ class IapService {
   Future<Map<String, ProductDetails>>? _inFlightCatalogQuery;
   Timer? _resumeGraceTimer;
   bool _sawPendingPurchaseStatus = false;
+  Future<void>? _inFlightUpdateWork;
 
   VerifyPurchaseCallback? _onVerifyPurchase;
   void Function(IapPurchaseResult result)? _onBackgroundPurchase;
@@ -345,6 +346,18 @@ class IapService {
       final available = await _ensureStoreAvailable();
       if (!available) return false;
       await _iap.restorePurchases();
+      if (silent) {
+        // Give the broadcast purchaseStream a beat to deliver restored purchases,
+        // then wait briefly for verification to finish before gating Splash/Home ads.
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        final pendingWork = _inFlightUpdateWork;
+        if (pendingWork != null) {
+          await pendingWork.timeout(
+            const Duration(seconds: 2),
+            onTimeout: () {},
+          );
+        }
+      }
       return true;
     } catch (e) {
       debugPrint('IapService.restorePurchases error: $e');
@@ -363,7 +376,18 @@ class IapService {
         details.contains('already owned');
   }
 
-  Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) async {
+  Future<void> _handlePurchaseUpdates(List<PurchaseDetails> purchases) {
+    final prev = _inFlightUpdateWork ?? Future<void>.value();
+    final next = prev.catchError((_) {}).then((_) => _processPurchaseUpdates(purchases));
+    _inFlightUpdateWork = next;
+    return next.whenComplete(() {
+      if (identical(_inFlightUpdateWork, next)) {
+        _inFlightUpdateWork = null;
+      }
+    });
+  }
+
+  Future<void> _processPurchaseUpdates(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       _resumeGraceTimer?.cancel();
       debugPrint(

@@ -187,6 +187,10 @@ const LanguagePack jaLanguagePack = LanguagePack(
     'menu_rate_app': 'アプリを評価',
     'menu_terms': '利用規約',
     'menu_privacy': 'プライバシーポリシー',
+    'menu_manage_subscription': 'サブスクリプション管理',
+    'manage_sub_desc':
+        '定期購入の請求・管理はストアで行われます。自動更新の解約や返金リクエストは Google Play / App Store から直接行えます。',
+    'manage_sub_open_store': 'ストアの定期購入を開く',
     'rate_dialog_desc': 'ショートドラマをお楽しみいただけていますか？ぜひ星をタップして評価してください！',
     'rate_submit_btn': '送信する',
     'rate_thanks_toast': 'ご評価いただきありがとうございます！',

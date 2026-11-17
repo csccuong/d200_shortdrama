@@ -198,6 +198,10 @@ const LanguagePack frLanguagePack = LanguagePack(
     'menu_rate_app': 'Noter l\'application',
     'menu_terms': 'Conditions d\'utilisation',
     'menu_privacy': 'Politique de confidentialité',
+    'menu_manage_subscription': 'Gérer l\'abonnement',
+    'manage_sub_desc':
+        'Les abonnements sont facturés et gérés par le store. Vous pouvez annuler le renouvellement ou demander un remboursement sur Google Play / App Store.',
+    'manage_sub_open_store': 'Ouvrir les abonnements du store',
     'rate_dialog_desc':
         'Vous appréciez nos dramas courts ? Touchez une étoile pour noter votre expérience !',
     'rate_submit_btn': 'Envoyer',

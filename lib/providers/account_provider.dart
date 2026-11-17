@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
@@ -464,42 +465,74 @@ class AccountNotifier extends Notifier<AccountState> {
     }
   }
 
+  bool _isSubscriptionProductId(String productId) {
+    return (state.iapCatalog?.subscriptions ??
+                IapCatalog.defaultVipSubscriptions)
+            .any((s) => s.productId == productId) ||
+        IapCatalog.defaultVipSubscriptions.any((s) => s.productId == productId);
+  }
+
+  bool _isAlreadyProcessedReceiptError(Object error) {
+    if (error is! DioException) return false;
+    final status = error.response?.statusCode;
+    if (status != 400 && status != 409) return false;
+    final msg = (error.message ?? '').toLowerCase();
+    final dataStr = (error.response?.data?.toString() ?? '').toLowerCase();
+    return msg.contains('already processed') ||
+        dataStr.contains('already processed');
+  }
+
+  void _applyVerifiedSubscriptionVip(
+    String productId, {
+    Map<String, dynamic> verifyData = const {},
+    bool? verifiedVip = true,
+  }) {
+    ref.read(walletProvider.notifier).applyIapVerifyResponse(
+          verifyData,
+          fallbackIsVip: verifiedVip,
+        );
+    if (verifiedVip != null) {
+      ref.read(userWalletProvider.notifier).syncFromApi(
+            isVip: verifiedVip,
+            vipPlanName: productId,
+            autoPlayNext:
+                state.profile?.settings.autoPlayNext ??
+                ref.read(userWalletProvider).autoPlayNext,
+          );
+    }
+    unawaited(_refreshAfterVerify(keepVipIfVerified: verifiedVip == true));
+  }
+
   Future<bool> verifyIap({
     required String productId,
     required String purchaseToken,
   }) async {
+    final isSubscriptionProduct = _isSubscriptionProductId(productId);
     try {
       final verifyData = await _service.verifyIap(
         productId: productId,
         purchaseToken: purchaseToken,
       );
 
-      final isSubscriptionProduct =
-          (state.iapCatalog?.subscriptions ?? IapCatalog.defaultVipSubscriptions)
-              .any((s) => s.productId == productId) ||
-          IapCatalog.defaultVipSubscriptions
-              .any((s) => s.productId == productId);
       final verifiedVip =
           (verifyData['is_vip'] as bool?) ??
           (isSubscriptionProduct ? true : null);
 
-      ref.read(walletProvider.notifier).applyIapVerifyResponse(
-            verifyData,
-            fallbackIsVip: verifiedVip,
-          );
-      if (verifiedVip != null) {
-        ref.read(userWalletProvider.notifier).syncFromApi(
-              isVip: verifiedVip,
-              vipPlanName: productId,
-              autoPlayNext:
-                  state.profile?.settings.autoPlayNext ??
-                  ref.read(userWalletProvider).autoPlayNext,
-            );
-      }
-
-      unawaited(_refreshAfterVerify(keepVipIfVerified: verifiedVip == true));
+      _applyVerifiedSubscriptionVip(
+        productId,
+        verifyData: verifyData,
+        verifiedVip: verifiedVip,
+      );
       return true;
     } catch (e) {
+      if (isSubscriptionProduct && _isAlreadyProcessedReceiptError(e)) {
+        debugPrint(
+          'AccountNotifier.verifyIap: receipt already processed for active '
+          'subscription $productId — restoring VIP state.',
+        );
+        _applyVerifiedSubscriptionVip(productId, verifiedVip: true);
+        return true;
+      }
       debugPrint('AccountNotifier.verifyIap error: $e');
       state = state.copyWith(errorMessage: AppStrings.genericError());
       return false;

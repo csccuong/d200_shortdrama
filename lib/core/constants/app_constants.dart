@@ -52,6 +52,9 @@ class AppConstants {
     ..addListener(() {
       if (isMobilePlatform) {
         EasyAds.instance.setPremiumUser(isPremiumUser.value);
+        if (isPremiumUser.value) {
+          EasyAds.instance.appLifecycleReactor?.setAllowAppOpenAd(false);
+        }
       }
     });
 

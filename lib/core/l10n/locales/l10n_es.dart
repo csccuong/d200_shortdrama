@@ -198,6 +198,10 @@ const LanguagePack esLanguagePack = LanguagePack(
     'menu_rate_app': 'Calificar App',
     'menu_terms': 'Términos de servicio',
     'menu_privacy': 'Política de privacidad',
+    'menu_manage_subscription': 'Gestionar suscripción',
+    'manage_sub_desc':
+        'Las suscripciones se facturan y gestionan a través de la tienda. Puedes cancelar la renovación automática o solicitar un reembolso en Google Play / App Store.',
+    'manage_sub_open_store': 'Abrir suscripciones de la tienda',
     'rate_dialog_desc':
         '¿Disfrutas viendo dramas cortos en nuestra app? ¡Toca una estrella para calificarnos!',
     'rate_submit_btn': 'Enviar',

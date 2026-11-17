@@ -187,6 +187,10 @@ const LanguagePack koLanguagePack = LanguagePack(
     'menu_rate_app': '앱 평가하기',
     'menu_terms': '이용약관',
     'menu_privacy': '개인정보 처리방침',
+    'menu_manage_subscription': '구독 관리',
+    'manage_sub_desc':
+        '구독 결제 및 관리는 스토어에서 처리됩니다. Google Play / App Store에서 직접 자동 갱신 해지 또는 환불을 요청할 수 있습니다.',
+    'manage_sub_open_store': '스토어 구독 열기',
     'rate_dialog_desc': '숏폼 드라마를 재미있게 보고 계신가요? 별점을 눌러 소중한 의견을 남겨주세요!',
     'rate_submit_btn': '제출하기',
     'rate_thanks_toast': '소중한 평가 감사합니다!',

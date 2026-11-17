@@ -201,6 +201,10 @@ const LanguagePack viLanguagePack = LanguagePack(
     'menu_rate_app': 'Đánh giá ứng dụng',
     'menu_terms': 'Điều khoản dịch vụ',
     'menu_privacy': 'Chính sách bảo mật',
+    'menu_manage_subscription': 'Quản lý gói đăng ký',
+    'manage_sub_desc':
+        'Gói VIP được thanh toán và quản lý qua cửa hàng ứng dụng. Bạn có thể hủy gia hạn hoặc yêu cầu hoàn tiền (refund) trực tiếp trên Google Play / App Store.',
+    'manage_sub_open_store': 'Mở quản lý gói trên Store',
     'rate_dialog_desc':
         'Bạn yêu thích trải nghiệm xem phim ngắn trên ứng dụng? Hãy chạm chọn số sao để đánh giá nhé!',
     'rate_submit_btn': 'Gửi đánh giá',

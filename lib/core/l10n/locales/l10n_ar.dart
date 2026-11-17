@@ -194,6 +194,10 @@ const LanguagePack arLanguagePack = LanguagePack(
     'menu_rate_app': 'تقييم التطبيق',
     'menu_terms': 'شروط الخدمة',
     'menu_privacy': 'سياسة الخصوصية',
+    'menu_manage_subscription': 'إدارة الاشتراك',
+    'manage_sub_desc':
+        'تتم فوترَة الاشتراكات وإدارتها عبر المتجر. يمكنك إلغاء التجديد التلقائي أو طلب استرداد الأموال مباشرة عبر Google Play / App Store.',
+    'manage_sub_open_store': 'فتح اشتراكات المتجر',
     'rate_dialog_desc':
         'هل تستمتع بمشاهدة المسلسلات القصيرة على تطبيقنا؟ اضغط على النجوم لتقييم تجربتك!',
     'rate_submit_btn': 'إرسال',

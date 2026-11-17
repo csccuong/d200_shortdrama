@@ -7,11 +7,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../ads/placement/show_placement_ad.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../fo/language/language_activity.dart';
-import '../../models/user_profile.dart';
 import '../../providers/app_providers.dart';
 import '../../widgets/bottom_native_all_ad.dart';
 import '../../widgets/drama_network_image.dart';
@@ -192,20 +192,6 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  String _formatVipSubtitle(
-    LocaleState locale,
-    WalletState wallet,
-    UserProfile? profile,
-  ) {
-    final isVip = wallet.isVip || (profile?.isVip ?? false);
-    final exp = wallet.vipExpiresAt ?? profile?.vipExpiresAt;
-    if (isVip && exp != null && exp.isNotEmpty) {
-      final shortDate = exp.length >= 10 ? exp.substring(0, 10) : exp;
-      return 'Expires $shortDate';
-    }
-    return locale.tr('vip_enjoy_benefits');
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
@@ -348,7 +334,7 @@ class ProfileScreen extends ConsumerWidget {
                                 ),
                                 SizedBox(height: 2.h),
                                 Text(
-                                  _formatVipSubtitle(locale, wallet, profile),
+                                  locale.tr('vip_enjoy_benefits'),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTextStyles.vipBannerSubtitle,
@@ -422,6 +408,18 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  SizedBox(height: 12.h),
+                  _ProfileMenuTile(
+                    icon: Icons.subscriptions_outlined,
+                    title: locale.tr('menu_manage_subscription'),
+                    onTap: () => _showManageSubscriptionSheet(
+                      context,
+                      ref,
+                      locale,
+                      isVip: isVip,
+                      vipSubtitle: locale.tr('vip_enjoy_benefits'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -431,18 +429,227 @@ class ProfileScreen extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _openStoreSubscriptions(
+    BuildContext context,
+    WidgetRef ref,
+    LocaleState locale,
+  ) async {
+    final initPkg =
+        ref.read(sessionProvider).asData?.value.initData?.app.packageName.trim() ??
+            '';
+    final pkg = initPkg.isNotEmpty ? initPkg : AppConstants.resolvedPackageId;
+
+    final uris = (!kIsWeb && Platform.isIOS)
+        ? <Uri>[Uri.parse('https://apps.apple.com/account/subscriptions')]
+        : <Uri>[
+            if (pkg.isNotEmpty)
+              Uri.parse(
+                'https://play.google.com/store/account/subscriptions?package=$pkg',
+              ),
+            Uri.parse('https://play.google.com/store/account/subscriptions'),
+          ];
+
+    final releaseAdGuard = suppressAppOpenAdsOnResume(excludeNextResume: true);
+    try {
+      for (final uri in uris) {
+        if (await _tryLaunch(uri, const [LaunchMode.externalApplication])) {
+          return;
+        }
+      }
+    } finally {
+      releaseAdGuard();
+    }
+
+    if (context.mounted) {
+      AppToast.show(context, locale.tr('generic_error_toast'));
+    }
+  }
+
+  void _showManageSubscriptionSheet(
+    BuildContext context,
+    WidgetRef ref,
+    LocaleState locale, {
+    required bool isVip,
+    required String vipSubtitle,
+  }) {
+    final bottomInset = AppScreenUtils.bottomSafeInset(context);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.transparent,
+      builder: (sheetCtx) {
+        return Container(
+          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 20.h + bottomInset),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSheet,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40.w,
+                  height: 4.h,
+                  margin: EdgeInsets.only(bottom: 14.h),
+                  decoration: BoxDecoration(
+                    color: AppColors.textWhite24,
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Image.asset(
+                    'assets/images/vip_crown.png',
+                    width: 28.w,
+                    height: 28.w,
+                    fit: BoxFit.contain,
+                  ),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      locale.tr('menu_manage_subscription'),
+                      style: AppTextStyles.h3,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(sheetCtx),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: AppColors.textWhite60,
+                      size: 20.sp,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 10.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+                decoration: BoxDecoration(
+                  color: AppColors.profileTileBg,
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(
+                    color: isVip
+                        ? AppColors.gold.withValues(alpha: 0.45)
+                        : AppColors.borderLight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isVip
+                                ? locale.tr('vip_activated_title')
+                                : locale.tr('free_badge'),
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: isVip
+                                  ? AppColors.gold
+                                  : AppColors.textPrimary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            vipSubtitle,
+                            style: AppTextStyles.captionSmall.copyWith(
+                              color: AppColors.textWhite60,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (isVip)
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 10.w,
+                          vertical: 4.h,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.vipActivateBtnBg,
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Text(
+                          locale.tr('plan_active'),
+                          style: AppTextStyles.vipActivateButton,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 12.h),
+              Text(
+                locale.tr('manage_sub_desc'),
+                style: AppTextStyles.bodyRegular.copyWith(
+                  color: AppColors.textWhite70,
+                  height: 1.5,
+                ),
+              ),
+              SizedBox(height: 18.h),
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  unawaited(_openStoreSubscriptions(context, ref, locale));
+                },
+                child: Container(
+                  width: double.infinity,
+                  height: 48.h,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(24.r),
+                  ),
+                  child: Text(
+                    locale.tr('manage_sub_open_store'),
+                    style: AppTextStyles.rewardContinueBtn,
+                  ),
+                ),
+              ),
+              SizedBox(height: 8.h),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    unawaited(
+                      ref.read(accountProvider.notifier).restorePurchases(),
+                    );
+                  },
+                  child: Text(
+                    locale.tr('iap_restore_purchases'),
+                    style: AppTextStyles.caption.copyWith(
+                      color: AppColors.textWhite70,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _ProfileMenuTile extends StatelessWidget {
-  final String iconAsset;
+  final String? iconAsset;
+  final IconData? icon;
   final String title;
   final VoidCallback onTap;
 
   const _ProfileMenuTile({
-    required this.iconAsset,
+    this.iconAsset,
+    this.icon,
     required this.title,
     required this.onTap,
-  });
+  }) : assert(iconAsset != null || icon != null);
 
   @override
   Widget build(BuildContext context) {
@@ -456,13 +663,20 @@ class _ProfileMenuTile extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
           child: Row(
             children: [
-              Image.asset(
-                iconAsset,
-                width: 22.w,
-                height: 22.w,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.high,
-              ),
+              if (iconAsset != null)
+                Image.asset(
+                  iconAsset!,
+                  width: 22.w,
+                  height: 22.w,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                )
+              else
+                Icon(
+                  icon,
+                  color: AppColors.textPrimary,
+                  size: 22.sp,
+                ),
               SizedBox(width: 14.w),
               Expanded(
                 child: Text(

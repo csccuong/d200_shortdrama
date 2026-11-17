@@ -195,6 +195,10 @@ const LanguagePack enLanguagePack = LanguagePack(
     'menu_rate_app': 'Rate App',
     'menu_terms': 'Terms of Service',
     'menu_privacy': 'Privacy Policy',
+    'menu_manage_subscription': 'Manage Subscription',
+    'manage_sub_desc':
+        'Subscriptions are billed and managed by the store. You can cancel auto-renewal or request a refund directly in Google Play / App Store.',
+    'manage_sub_open_store': 'Open Store Subscriptions',
     'rate_dialog_desc':
         'Enjoying short dramas on our app? Tap a star below to rate your experience!',
     'rate_submit_btn': 'Submit',
