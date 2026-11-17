@@ -13,8 +13,8 @@ plugins {
 
 val appBuildCode = "D200_Drama"
 val appDisplayName = "Dramota: Short & Dramas Reel"
-val appVersionName = "0.0.3"
-val appVersionCode = 3
+val appVersionName = "0.0.4"
+val appVersionCode = 4
 val formattedDate: String = SimpleDateFormat("ddMMyyyy", Locale.US).format(Date())
 
 fun releaseArtifactName(
