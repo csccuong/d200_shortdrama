@@ -681,7 +681,7 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     ref.listen<LocaleState>(localeProvider, (prev, next) {
       if (prev?.appLanguage != next.appLanguage && sessionAsync.isReady) {
         unawaited(ref.read(feedProvider.notifier).fetchInitialFeed(next.appLanguage));
-        if (_topTab == 1) {
+        if (_topTab == 1 || _allDramas.isNotEmpty) {
           unawaited(_loadAllDramas(reset: true));
         }
       }

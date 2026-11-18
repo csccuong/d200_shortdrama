@@ -878,7 +878,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             AppScreenUtils.posterGridColumns(context),
                         crossAxisSpacing: 10.w,
                         mainAxisSpacing: 14.h,
-                        childAspectRatio: 0.62,
+                        childAspectRatio: 0.59,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, idx) {
@@ -984,7 +984,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             SizedBox(height: 10.h),
             SizedBox(
-              height: 186.h,
+              height: 192.h,
               child: ListView.separated(
                 padding: EdgeInsets.symmetric(horizontal: 14.w),
                 scrollDirection: Axis.horizontal,
@@ -1477,6 +1477,7 @@ class _PosterGridItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
@@ -1560,11 +1561,13 @@ class _PosterGridItem extends StatelessWidget {
             ),
           ),
           SizedBox(height: 6.h),
-          Text(
-            drama.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyles.posterTitle,
+          Flexible(
+            child: Text(
+              drama.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.posterTitle,
+            ),
           ),
         ],
       ),

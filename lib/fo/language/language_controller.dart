@@ -435,9 +435,12 @@ class LanguageController extends ChangeNotifier {
                   subtitleLanguage: code,
                 );
             await Future.wait([
+              ref.read(sessionProvider.notifier).refreshSession(),
               ref.read(homeProvider.notifier).fetchHome(code),
               ref.read(feedProvider.notifier).fetchInitialFeed(code),
               ref.read(rewardsProvider.notifier).fetchOverview(code),
+              ref.read(mylistProvider.notifier).fetchFavorites(lang: code),
+              ref.read(mylistProvider.notifier).fetchHistory(lang: code),
             ]);
           }),
         );

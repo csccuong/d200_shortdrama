@@ -106,6 +106,9 @@ class LanguagePickerSheet extends ConsumerWidget {
                                 );
                             await Future.wait([
                               ref
+                                  .read(sessionProvider.notifier)
+                                  .refreshSession(),
+                              ref
                                   .read(homeProvider.notifier)
                                   .fetchHome(opt.code),
                               ref
@@ -114,6 +117,12 @@ class LanguagePickerSheet extends ConsumerWidget {
                               ref
                                   .read(rewardsProvider.notifier)
                                   .fetchOverview(opt.code),
+                              ref
+                                  .read(mylistProvider.notifier)
+                                  .fetchFavorites(lang: opt.code),
+                              ref
+                                  .read(mylistProvider.notifier)
+                                  .fetchHistory(lang: opt.code),
                             ]);
                           }),
                         );

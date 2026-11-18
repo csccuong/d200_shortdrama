@@ -6,6 +6,7 @@ import '../models/drama_card.dart';
 import '../models/episode_detail.dart';
 import '../models/play_response.dart';
 import '../services/api/drama_api_service.dart';
+import 'app_providers.dart';
 
 // ============================================================================
 // DRAMA DETAIL STATE
@@ -30,11 +31,16 @@ class DramaDetailState {
 final dramaDetailProvider =
     FutureProvider.autoDispose.family<DramaDetailState, String>(
   (ref, dramaId) async {
+    final lang = ref.watch(localeProvider.select((s) => s.appLanguage));
     final service = inject<DramaApiService>();
 
     // Fetch drama detail and episodes in parallel (up to 100 episodes per page)
-    final detailFuture = service.fetchDramaDetail(dramaId);
-    final episodesFuture = service.fetchEpisodes(dramaId, pageSize: 100);
+    final detailFuture = service.fetchDramaDetail(dramaId, lang: lang);
+    final episodesFuture = service.fetchEpisodes(
+      dramaId,
+      pageSize: 100,
+      lang: lang,
+    );
     final detailRes = await detailFuture;
     final episodesResponse = await episodesFuture;
 
@@ -54,9 +60,14 @@ final dramaDetailProvider =
 final playEpisodeProvider = FutureProvider.autoDispose
     .family<PlayResponse, ({String dramaId, int episodeNumber})>(
   (ref, args) async {
+    final lang = ref.watch(localeProvider.select((s) => s.appLanguage));
     final service = inject<DramaApiService>();
     try {
-      return await service.playEpisode(args.dramaId, args.episodeNumber);
+      return await service.playEpisode(
+        args.dramaId,
+        args.episodeNumber,
+        lang: lang,
+      );
     } on DramaPaywallException {
       // Re-throw so UI layer can catch and show paywall bottom sheet
       rethrow;
