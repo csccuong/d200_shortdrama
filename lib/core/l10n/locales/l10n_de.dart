@@ -232,6 +232,38 @@ const LanguagePack deLanguagePack = LanguagePack(
     'player_ep_badge': 'Ep',
     'player_eps_short': 'Flg.',
     'player_episodes_full': 'Folgen',
+    'player_more_short': 'Mehr',
+    'player_less_short': 'Weniger',
+    'drama_tab_intro': 'Übersicht',
+    'drama_tab_episodes': 'Folgen',
+    'drama_views_suffix': 'Aufrufe',
+    'drama_more_like_this': 'Ähnliche Inhalte',
+    'drama_dubbed_badge': 'Synchron',
+    'menu_promotion_code': 'Aktionscode',
+    'promo_code_title': 'Aktionscode einlösen',
+    'promo_code_desc':
+        'Gib deinen Aktions- oder Prüfercode ein, um Vorteile zu aktivieren.',
+    'promo_code_hint': 'Aktionscode eingeben',
+    'promo_apply_btn': 'Einlösen',
+    'promo_empty_error': 'Bitte gib einen Aktionscode ein.',
+    'promo_invalid_code': 'Ungültiger oder abgelaufener Aktionscode.',
+    'menu_feedback': 'Feedback',
+    'feedback_title': 'Feedback senden',
+    'feedback_desc':
+        'Teile uns deine Meinung, Fehlerberichte oder Vorschläge mit.',
+    'feedback_hint': 'Schreibe hier dein Feedback...',
+    'feedback_submit_btn': 'Absenden',
+    'feedback_empty_error': 'Bitte gib dein Feedback ein.',
+    'feedback_thanks_toast': 'Vielen Dank für dein Feedback!',
+    'iap_cancel_anytime':
+        'Abo mit automatischer Verlängerung. Jederzeit im Google Play Store kündbar.',
+    'iap_auto_renew_android':
+        'Verlängert sich automatisch für {price} {period} bis zur Kündigung. Jederzeit im Google Play Store kündbar.',
+    'iap_auto_renew_ios':
+        'Die Zahlung wird bei Bestätigung deinem Apple-Account belastet. Verlängert sich automatisch für {price} {period}, sofern nicht mindestens 24 Stunden vor Ablauf gekündigt wird. Verwaltung in den App-Store-Kontoeinstellungen.',
+    'iap_restore_purchases': 'Käufe wiederherstellen',
+    'iap_restore_success': 'VIP-Mitgliedschaft erfolgreich wiederhergestellt!',
+    'iap_restore_empty': 'Kein aktives VIP-Abonnement gefunden.',
     'terms_content':
         '1. Dienstnutzung\nDiese App streamt lizenzierte Kurz-Drama-Serien mit synchronisierten mehrsprachigen Untertiteln.\n\n2. Konto & VIP-Pass\nVIP-Vorteile und Münzguthaben sind mit deiner Konto-ID verknüpft, um alle Folgen freizuschalten.\n\n3. Urheberrecht\nAlle Videos, Poster und Untertitel sind ausschließlich für den persönlichen Gebrauch bestimmt.',
     'privacy_content':

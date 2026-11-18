@@ -252,6 +252,13 @@ const LanguagePack hiLanguagePack = LanguagePack(
     'player_ep_badge': 'एपि',
     'player_eps_short': 'एपि',
     'player_episodes_full': 'एपिसोड',
+    'player_more_short': 'और',
+    'player_less_short': 'कम',
+    'drama_tab_intro': 'परिचय',
+    'drama_tab_episodes': 'एपिसोड',
+    'drama_views_suffix': 'व्यूज़',
+    'drama_more_like_this': 'समान सामग्री',
+    'drama_dubbed_badge': 'डब्ड',
     'terms_content':
         '1. सेवा का उपयोग\nयह एप्लिकेशन सिंक्रनाइज़ बहु-भाषी सबटाइटल के साथ लाइसेंस प्राप्त शॉर्ट ड्रामा सीरीज़ स्ट्रीम करता है।\n\n2. खाता और VIP पास\nएपिसोड अनलॉक करने और विज्ञापन-मुक्त देखने के लिए VIP लाभ और कॉइन बैलेंस आपकी खाता ID से जुड़े होते हैं।\n\n3. बौद्धिक संपदा\nसभी वीडियो, पोस्टर और सबटाइटल केवल व्यक्तिगत स्ट्रीमिंग के लिए हैं और इन्हें पुनः वितरित नहीं किया जा सकता।',
     'privacy_content':

@@ -258,6 +258,13 @@ const LanguagePack viLanguagePack = LanguagePack(
     'player_ep_badge': 'Tập',
     'player_eps_short': 'Tập',
     'player_episodes_full': 'Tập',
+    'player_more_short': 'Thêm',
+    'player_less_short': 'Thu gọn',
+    'drama_tab_intro': 'Giới thiệu',
+    'drama_tab_episodes': 'Chọn tập',
+    'drama_views_suffix': 'lượt xem',
+    'drama_more_like_this': 'Thêm nội dung tương tự',
+    'drama_dubbed_badge': 'Bản lồng tiếng',
     'terms_content':
         '1. Sử dụng dịch vụ\nỨng dụng cung cấp nội dung phim ngắn giải trí có bản quyền kèm phụ đề đa ngôn ngữ đồng bộ.\n\n2. Tài khoản & Gói VIP\nQuyền lợi VIP và số dư Xu được gắn liền với ID thiết bị/tài khoản của bạn để mở khóa toàn bộ tập phim.\n\n3. Bản quyền nội dung\nMọi video, poster và phụ đề trong ứng dụng chỉ phục vụ nhu cầu xem cá nhân, nghiêm cấm sao chép hoặc phát tán trái phép.',
     'privacy_content':

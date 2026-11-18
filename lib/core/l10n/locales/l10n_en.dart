@@ -252,6 +252,13 @@ const LanguagePack enLanguagePack = LanguagePack(
     'player_ep_badge': 'Ep',
     'player_eps_short': 'Eps',
     'player_episodes_full': 'Episodes',
+    'player_more_short': 'More',
+    'player_less_short': 'Less',
+    'drama_tab_intro': 'Overview',
+    'drama_tab_episodes': 'Episodes',
+    'drama_views_suffix': 'views',
+    'drama_more_like_this': 'More Like This',
+    'drama_dubbed_badge': 'Dubbed',
     'terms_content':
         '1. Service Usage\nThis application streams licensed short-form drama series with synchronized multi-language subtitles.\n\n2. Account & VIP Pass\nVIP benefits and Coin balances are linked to your account ID for unlocking episodes and ad-free viewing.\n\n3. Intellectual Property\nAll videos, posters, and subtitle files are provided solely for personal streaming and may not be redistributed.',
     'privacy_content':

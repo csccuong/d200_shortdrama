@@ -243,8 +243,10 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
   Future<void> _openEpisodeSheet(
     DramaCard drama,
     List<EpisodeItem> episodes,
-    bool isVipUser,
-  ) {
+    bool isVipUser, {
+    int initialTab = 1,
+    List<DramaCard> relatedDramas = const [],
+  }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -254,13 +256,28 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
         drama: drama,
         currentEpisode: _currentEpisode,
         episodes: episodes,
+        relatedDramas: relatedDramas,
         isVipUser: isVipUser,
         locallyUnlockedEpisodes: _locallyUnlockedEpisodes,
         fullDramaUnlocked: _fullDramaUnlocked,
+        initialTab: initialTab,
         onSelectEpisode: (epNo) => _jumpToEpisode(
           epNo,
           _resolveTotalEpisodes(drama, episodes),
         ),
+        onSelectRelatedDrama: (selected) {
+          if (!mounted) return;
+          Navigator.of(context).pushReplacement(
+            AppScreenUtils.adaptivePageRoute<void>(
+              builder: (_) => DramaPlayerScreen(
+                dramaCard: selected,
+                dramaId: selected.dramaId,
+                initialEpisode: 1,
+                sourceScreen: 'related_drama',
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -444,8 +461,20 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
                 sourceScreen: widget.sourceScreen,
                 isActive: _currentEpisode == epNo && !_nativeFullOpen,
                 onVideoEnded: () => _onVideoEnded(totalEpisodes),
-                onOpenEpisodeList: () =>
-                    _openEpisodeSheet(effectiveDrama, episodes, isVipUser),
+                onOpenEpisodeList: () => _openEpisodeSheet(
+                  effectiveDrama,
+                  episodes,
+                  isVipUser,
+                  initialTab: 1,
+                  relatedDramas: detailData?.relatedDramas ?? const [],
+                ),
+                onOpenDramaInfo: () => _openEpisodeSheet(
+                  effectiveDrama,
+                  episodes,
+                  isVipUser,
+                  initialTab: 0,
+                  relatedDramas: detailData?.relatedDramas ?? const [],
+                ),
                 showFullDramaButton: false,
                 requiredUnlockEpisode: requiredUnlockEp,
                 onControlsVisibilityChanged: (visible) {

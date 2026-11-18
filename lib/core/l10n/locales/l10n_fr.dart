@@ -232,6 +232,38 @@ const LanguagePack frLanguagePack = LanguagePack(
     'player_ep_badge': 'Ép',
     'player_eps_short': 'Éps',
     'player_episodes_full': 'Épisodes',
+    'player_more_short': 'Plus',
+    'player_less_short': 'Moins',
+    'drama_tab_intro': 'Présentation',
+    'drama_tab_episodes': 'Épisodes',
+    'drama_views_suffix': 'vues',
+    'drama_more_like_this': 'Contenus similaires',
+    'drama_dubbed_badge': 'Doublé',
+    'menu_promotion_code': 'Code promo',
+    'promo_code_title': 'Utiliser un code promo',
+    'promo_code_desc':
+        'Entrez votre code promotionnel ou de test pour activer vos avantages.',
+    'promo_code_hint': 'Entrez le code promo',
+    'promo_apply_btn': 'Appliquer',
+    'promo_empty_error': 'Veuillez entrer un code promo.',
+    'promo_invalid_code': 'Code promo invalide ou expiré.',
+    'menu_feedback': 'Commentaires',
+    'feedback_title': 'Envoyer un avis',
+    'feedback_desc':
+        'Partagez vos remarques, signalements de bugs ou suggestions.',
+    'feedback_hint': 'Écrivez votre commentaire ici...',
+    'feedback_submit_btn': 'Envoyer',
+    'feedback_empty_error': 'Veuillez saisir votre commentaire.',
+    'feedback_thanks_toast': 'Merci pour votre retour !',
+    'iap_cancel_anytime':
+        'Abonnement à renouvellement automatique. Résiliable à tout moment sur Google Play Store.',
+    'iap_auto_renew_android':
+        'Renouvellement automatique à {price} {period} jusqu\'à résiliation. Résiliable à tout moment sur Google Play Store.',
+    'iap_auto_renew_ios':
+        'Le paiement est débité sur votre identifiant Apple lors de la confirmation. Renouvellement automatique à {price} {period} sauf annulation au moins 24 h avant la fin de la période. Gérez-le dans les réglages de l\'App Store.',
+    'iap_restore_purchases': 'Restaurer les achats',
+    'iap_restore_success': 'Abonnement VIP restauré avec succès !',
+    'iap_restore_empty': 'Aucun abonnement VIP actif trouvé.',
     'terms_content':
         '1. Utilisation du service\nCette application diffuse des séries de dramas courts avec sous-titres multilingues synchronisés.\n\n2. Compte et Pass VIP\nLes avantages VIP et le solde de pièces sont liés à votre identifiant pour débloquer tous les épisodes.\n\n3. Propriété intellectuelle\nToutes les vidéos, affiches et pistes de sous-titres sont réservées à un usage personnel.',
     'privacy_content':

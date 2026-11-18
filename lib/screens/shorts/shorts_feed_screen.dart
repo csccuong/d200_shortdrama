@@ -8,7 +8,6 @@ import '../../core/di/injection.dart';
 import '../../core/startup/app_startup_coordinator.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
-import '../../models/episode_detail.dart';
 import '../../models/feed_response.dart';
 import '../../models/taxonomy_models.dart';
 import '../../providers/app_providers.dart';
@@ -359,19 +358,12 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
     }
   }
 
-  Future<void> _openEpisodeSheet(DramaCard drama, int currentEp) async {
-    EpisodesListResponse? epRes;
-    try {
-      epRes = await ref.read(dramaApiServiceProvider).fetchEpisodes(
-            drama.dramaId,
-            pageSize: 100,
-            lang: ref.read(localeProvider).appLanguage,
-          );
-    } catch (_) {
-      epRes = null;
-    }
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
+  Future<void> _openEpisodeSheet(
+    DramaCard drama,
+    int currentEp, {
+    int initialTab = 1,
+  }) {
+    return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -379,9 +371,9 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
       builder: (_) => EpisodeSelectorSheet(
         drama: drama,
         currentEpisode: currentEp,
-        episodes: epRes?.items ?? const [],
-        isVipUser: epRes?.isUserVip ?? false,
+        initialTab: initialTab,
         onSelectEpisode: (epNo) => _openFullDrama(drama, startEpisode: epNo),
+        onSelectRelatedDrama: (selected) => _openFullDrama(selected),
       ),
     );
   }
@@ -942,6 +934,8 @@ class _ShortsFeedScreenState extends ConsumerState<ShortsFeedScreen>
               fromForYouButton: true,
             ),
             onOpenEpisodeList: () => _openEpisodeSheet(item, previewEp),
+            onOpenDramaInfo: () =>
+                _openEpisodeSheet(item, previewEp, initialTab: 0),
             onPlaybackUpdate: (posSec, durSec, isPlaying) {
               if (!active || !isPlaying) return;
               _activePosSec = posSec;

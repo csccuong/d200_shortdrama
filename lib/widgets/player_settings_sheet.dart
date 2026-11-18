@@ -8,19 +8,22 @@ import '../services/app_strings.dart';
 class PlayerSettingsSheet extends ConsumerWidget {
   final List<String>? availableSubLangs;
   final bool subtitlesOnly;
+  final bool speedOnly;
 
   const PlayerSettingsSheet({
     super.key,
     this.availableSubLangs,
     this.subtitlesOnly = false,
-  });
+    this.speedOnly = false,
+  }) : assert(!(subtitlesOnly && speedOnly));
 
-  static const List<double> _speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+  static const List<double> speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
 
   static Future<void> show(
     BuildContext context, {
     List<String>? availableSubLangs,
     bool subtitlesOnly = false,
+    bool speedOnly = false,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -30,11 +33,12 @@ class PlayerSettingsSheet extends ConsumerWidget {
       builder: (_) => PlayerSettingsSheet(
         availableSubLangs: availableSubLangs,
         subtitlesOnly: subtitlesOnly,
+        speedOnly: speedOnly,
       ),
     );
   }
 
-  String _formatSpeed(double speed) {
+  static String formatSpeed(double speed) {
     if (speed == speed.roundToDouble()) {
       return '${speed.toStringAsFixed(1)}x';
     }
@@ -99,7 +103,7 @@ class PlayerSettingsSheet extends ConsumerWidget {
                 Icon(
                   subtitlesOnly
                       ? Icons.subtitles_rounded
-                      : Icons.tune_rounded,
+                      : (speedOnly ? Icons.speed_rounded : Icons.tune_rounded),
                   color: AppColors.primary,
                   size: 21.sp,
                 ),
@@ -108,7 +112,9 @@ class PlayerSettingsSheet extends ConsumerWidget {
                   child: Text(
                     subtitlesOnly
                         ? locale.tr('subtitle_language')
-                        : locale.tr('player_settings'),
+                        : (speedOnly
+                            ? locale.tr('playback_speed')
+                            : locale.tr('player_settings')),
                     style: AppTextStyles.h3,
                   ),
                 ),
@@ -124,7 +130,72 @@ class PlayerSettingsSheet extends ConsumerWidget {
             ),
             SizedBox(height: 8.h),
 
-            // 1. Show Subtitles Toggle + Subtitle Language Picker
+            if (speedOnly)
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.profileTileBg,
+                  borderRadius: BorderRadius.circular(14.r),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(speeds.length, (idx) {
+                    final spd = speeds[idx];
+                    final isSelected = wallet.playbackSpeed == spd;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (idx > 0)
+                          Divider(color: AppColors.divider, height: 1.h),
+                        InkWell(
+                          key: ValueKey('speed_option_$spd'),
+                          onTap: () {
+                            walletNotifier.setPlaybackSpeed(spd);
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 16.w,
+                              vertical: 13.h,
+                            ),
+                            color: isSelected
+                                ? AppColors.primary.withValues(alpha: 0.12)
+                                : AppColors.transparent,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    formatSpeed(spd),
+                                    style: AppTextStyles.profileMenuTitle.copyWith(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : AppColors.textPrimary,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                if (isSelected)
+                                  Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppColors.primary,
+                                    size: 20.sp,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+
+            if (!speedOnly) ...[
+              // 1. Show Subtitles Toggle + Subtitle Language Picker
             Container(
               padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
               decoration: BoxDecoration(
@@ -257,9 +328,10 @@ class PlayerSettingsSheet extends ConsumerWidget {
                         SizedBox(height: 4.h),
                       ],
                     ),
-            ),
+              ),
+            ],
 
-            if (!subtitlesOnly) ...[
+            if (!subtitlesOnly && !speedOnly) ...[
               SizedBox(height: 12.h),
 
               // 2. Auto-Play Next Episode Toggle
@@ -331,13 +403,13 @@ class PlayerSettingsSheet extends ConsumerWidget {
                   ),
                   SizedBox(height: 10.h),
                   Row(
-                    children: List.generate(_speeds.length, (idx) {
-                      final spd = _speeds[idx];
+                    children: List.generate(speeds.length, (idx) {
+                      final spd = speeds[idx];
                       final isSelected = wallet.playbackSpeed == spd;
                       return Expanded(
                         child: Padding(
                           padding: EdgeInsets.only(
-                            right: idx < _speeds.length - 1 ? 6.w : 0,
+                            right: idx < speeds.length - 1 ? 6.w : 0,
                           ),
                           child: GestureDetector(
                             onTap: () => walletNotifier.setPlaybackSpeed(spd),
@@ -357,7 +429,7 @@ class PlayerSettingsSheet extends ConsumerWidget {
                                 ),
                               ),
                               child: Text(
-                                _formatSpeed(spd),
+                                formatSpeed(spd),
                                 style: AppTextStyles.chipLabel(
                                   isSelected: isSelected,
                                 ),

@@ -19,6 +19,7 @@ import '../providers/app_providers.dart';
 import '../services/app_strings.dart';
 import '../services/srt_parser.dart';
 import 'drama_network_image.dart';
+import 'inline_more_text.dart';
 import 'player_settings_sheet.dart';
 import 'premium_upgrade_dialog.dart';
 import 'unlock_reward_overlay.dart';
@@ -32,6 +33,7 @@ class ShortVideoItem extends ConsumerStatefulWidget {
   final String sourceScreen;
   final VoidCallback? onVideoEnded;
   final FutureOr<void> Function()? onOpenEpisodeList;
+  final FutureOr<void> Function()? onOpenDramaInfo;
   final VoidCallback? onOpenFullDrama;
   final VoidCallback? onPreviewExpired;
   final bool showFullDramaButton;
@@ -52,6 +54,7 @@ class ShortVideoItem extends ConsumerStatefulWidget {
     this.sourceScreen = 'player',
     this.onVideoEnded,
     this.onOpenEpisodeList,
+    this.onOpenDramaInfo,
     this.onOpenFullDrama,
     this.onPreviewExpired,
     this.showFullDramaButton = false,
@@ -70,7 +73,6 @@ class ShortVideoItem extends ConsumerStatefulWidget {
 class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
     with WidgetsBindingObserver {
   static const Duration _controlsAutoHideDelay = Duration(seconds: 3);
-  static const List<double> _speeds = [1.0, 1.25, 1.5, 2.0, 0.75];
   static const String _icSave = 'assets/icons/ic_player_save.png';
   static const String _icSaveSelected =
       'assets/icons/ic_player_save_selected.png';
@@ -801,6 +803,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
   Future<void> _openPlayerSettings(
     List<String> availableSubLangs, {
     bool subtitlesOnly = false,
+    bool speedOnly = false,
   }) async {
     _hideControlsTimer?.cancel();
     _isSettingsSheetOpen = true;
@@ -809,6 +812,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         context,
         availableSubLangs: availableSubLangs,
         subtitlesOnly: subtitlesOnly,
+        speedOnly: speedOnly,
       );
     } finally {
       _isSettingsSheetOpen = false;
@@ -816,20 +820,6 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         _scheduleControlsAutoHide();
       }
     }
-  }
-
-  void _cyclePlaybackSpeed(double currentSpeed) {
-    final idx = _speeds.indexOf(currentSpeed);
-    final nextSpeed = _speeds[(idx + 1) % _speeds.length];
-    ref.read(userWalletProvider.notifier).setPlaybackSpeed(nextSpeed);
-    _scheduleControlsAutoHide();
-  }
-
-  String _formatSpeed(double speed) {
-    if (speed == speed.roundToDouble()) {
-      return '${speed.toStringAsFixed(1)}x';
-    }
-    return '${speed}x';
   }
 
   Future<void> _unlockWithRewardAd() async {
@@ -1197,8 +1187,13 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
                       SizedBox(height: 15.h),
                       _ActionIconButton(
                         icon: Icons.speed_rounded,
-                        label: _formatSpeed(playbackSpeed),
-                        onTap: () => _cyclePlaybackSpeed(playbackSpeed),
+                        label: PlayerSettingsSheet.formatSpeed(playbackSpeed),
+                        onTap: () => unawaited(
+                          _openPlayerSettings(
+                            sheetSubLangs,
+                            speedOnly: true,
+                          ),
+                        ),
                         onLongPress: () => unawaited(
                           _openPlayerSettings(sheetSubLangs),
                         ),
@@ -1238,19 +1233,47 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
                       ),
                     ),
                     SizedBox(height: 8.h),
-                    Text(
-                      widget.drama.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.playerDramaTitle,
+                    GestureDetector(
+                      key: const ValueKey('player_drama_title_tap'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onOpenDramaInfo ?? widget.onOpenEpisodeList,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              widget.drama.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTextStyles.playerDramaTitle,
+                            ),
+                          ),
+                          SizedBox(width: 2.w),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.textPrimary,
+                            size: 19.sp,
+                          ),
+                        ],
+                      ),
                     ),
                     if (widget.drama.description.isNotEmpty) ...[
                       SizedBox(height: 5.h),
-                      Text(
-                        widget.drama.description,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.playerDramaDesc,
+                      GestureDetector(
+                        key: const ValueKey('player_drama_desc_tap'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap:
+                            widget.onOpenDramaInfo ?? widget.onOpenEpisodeList,
+                        child: InlineMoreText(
+                          text: widget.drama.description.trim(),
+                          style: AppTextStyles.playerDramaDesc,
+                          actionStyle: AppTextStyles.playerDramaDesc.copyWith(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          moreSuffix: ' ... ${locale.tr('player_more_short')}',
+                          maxLines: 2,
+                        ),
                       ),
                     ],
                     if (widget.showFullDramaButton &&

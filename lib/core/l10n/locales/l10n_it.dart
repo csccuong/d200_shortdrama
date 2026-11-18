@@ -253,6 +253,13 @@ const LanguagePack itLanguagePack = LanguagePack(
     'player_ep_badge': 'Ep.',
     'player_eps_short': 'Ep.',
     'player_episodes_full': 'Episodi',
+    'player_more_short': 'Altro',
+    'player_less_short': 'Riduci',
+    'drama_tab_intro': 'Dettagli',
+    'drama_tab_episodes': 'Episodi',
+    'drama_views_suffix': 'visualizzazioni',
+    'drama_more_like_this': 'Contenuti simili',
+    'drama_dubbed_badge': 'Doppiato',
     'terms_content':
         '1. Utilizzo del servizio\nQuesta applicazione trasmette serie di short drama con licenza e sottotitoli multilingue sincronizzati.\n\n2. Account e Pass VIP\nI vantaggi VIP e il saldo monete sono collegati al tuo ID account per sbloccare gli episodi e guardare senza pubblicità.\n\n3. Proprietà intellettuale\nTutti i video, le locandine e i file di sottotitoli sono destinati esclusivamente allo streaming personale e non possono essere ridistribuiti.',
     'privacy_content':

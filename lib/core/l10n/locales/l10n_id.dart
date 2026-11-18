@@ -252,6 +252,13 @@ const LanguagePack idLanguagePack = LanguagePack(
     'player_ep_badge': 'Ep',
     'player_eps_short': 'Ep',
     'player_episodes_full': 'Episode',
+    'player_more_short': 'Selengkapnya',
+    'player_less_short': 'Tutup',
+    'drama_tab_intro': 'Sinopsis',
+    'drama_tab_episodes': 'Pilih Episode',
+    'drama_views_suffix': 'tayangan',
+    'drama_more_like_this': 'Konten Serupa',
+    'drama_dubbed_badge': 'Sulih Suara',
     'terms_content':
         '1. Penggunaan Layanan\nAplikasi ini menayangkan serial drama pendek berlisensi dengan subtitle multibahasa yang tersinkronisasi.\n\n2. Akun & VIP Pass\nManfaat VIP dan saldo Koin terhubung ke ID akun Anda untuk membuka episode dan menonton bebas iklan.\n\n3. Hak Kekayaan Intelektual\nSemua video, poster, dan file subtitle hanya untuk streaming pribadi dan dilarang disebarluaskan.',
     'privacy_content':
