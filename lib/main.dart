@@ -13,7 +13,7 @@ import 'firebase_options.dart';
 import 'fo/splash/splash_activity.dart';
 import 'services/firebase_remote_config_service.dart';
 
-const String env = Environment.dev;
+const String env = Environment.prod;
 
 Future<void> main() async {
   await runZonedGuarded<Future<void>>(

@@ -1,32 +1,63 @@
 /// A VIP subscription product from the IAP catalog.
 class VipSubscription {
+  final String code;
   final String productId;
   final String name;
+  final String nameEn;
+  final String nameVi;
+  final String priceDisplay;
   final int durationDays;
   final double price;
   final String currency;
+  final bool isPopular;
+  final String benefitsEn;
   final List<String> features;
 
   const VipSubscription({
+    this.code = '',
     required this.productId,
     this.name = '',
+    this.nameEn = '',
+    this.nameVi = '',
+    this.priceDisplay = '',
     this.durationDays = 30,
     this.price = 0.0,
     this.currency = 'USD',
+    this.isPopular = false,
+    this.benefitsEn = '',
     this.features = const [],
   });
 
   factory VipSubscription.fromJson(Map<String, dynamic> json) {
+    final rawNameEn = json['name_en']?.toString().trim() ?? '';
+    final rawNameVi = json['name_vi']?.toString().trim() ?? '';
+    final rawName = json['name']?.toString().trim() ?? '';
+    final benefits = json['benefits_en']?.toString().trim() ?? '';
+    final parsedFeatures = (json['features'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        (benefits.isNotEmpty
+            ? benefits
+                .split('•')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : const <String>[]);
     return VipSubscription(
+      code: json['code']?.toString().trim() ?? '',
       productId: json['product_id'] as String? ?? '',
-      name: json['name'] as String? ?? '',
-      durationDays: json['duration_days'] as int? ?? 30,
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      name: rawName.isNotEmpty ? rawName : rawNameEn,
+      nameEn: rawNameEn,
+      nameVi: rawNameVi,
+      priceDisplay: json['price_display']?.toString().trim() ?? '',
+      durationDays: (json['duration_days'] as num?)?.toInt() ?? 30,
+      price: (json['price'] as num?)?.toDouble() ??
+          (json['price_usd'] as num?)?.toDouble() ??
+          0.0,
       currency: json['currency'] as String? ?? 'USD',
-      features: (json['features'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
+      isPopular: json['is_popular'] as bool? ?? false,
+      benefitsEn: benefits,
+      features: parsedFeatures,
     );
   }
 }

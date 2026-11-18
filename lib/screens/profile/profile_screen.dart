@@ -11,8 +11,11 @@ import '../../ads/placement/show_placement_ad.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
+import '../../core/utils/vip_package_helper.dart';
 import '../../fo/language/language_activity.dart';
+import '../../models/promo_feedback_models.dart';
 import '../../providers/app_providers.dart';
+import '../../services/api/app_api_service.dart';
 import '../../widgets/bottom_native_all_ad.dart';
 import '../../widgets/drama_network_image.dart';
 
@@ -367,6 +370,50 @@ class ProfileScreen extends ConsumerWidget {
 
                   // 4. Individual Rounded Menu Items
                   _ProfileMenuTile(
+                    key: const ValueKey('profile_promotion_code_tile'),
+                    leading: Container(
+                      width: 26.w,
+                      height: 26.w,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.gold.withValues(alpha: 0.28),
+                            AppColors.primaryBright.withValues(alpha: 0.24),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(
+                          color: AppColors.gold.withValues(alpha: 0.55),
+                          width: 0.9,
+                        ),
+                      ),
+                      child: ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: (bounds) => const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.gold,
+                            AppColors.secondaryOrange,
+                            AppColors.primaryBright,
+                          ],
+                        ).createShader(bounds),
+                        child: Icon(
+                          Icons.card_giftcard_rounded,
+                          size: 17.sp,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    title: locale.tr('menu_promotion_code'),
+                    onTap: () =>
+                        _showPromotionCodeSheet(context, ref, locale),
+                  ),
+                  SizedBox(height: 12.h),
+                  _ProfileMenuTile(
                     iconAsset: _icLanguage,
                     title: locale.tr('menu_language'),
                     onTap: () => ref.read(navigationServiceProvider).push(
@@ -379,6 +426,14 @@ class ProfileScreen extends ConsumerWidget {
                     iconAsset: _icRateApp,
                     title: locale.tr('menu_rate_app'),
                     onTap: () => unawaited(_openRateApp(context, ref, locale)),
+                  ),
+                  SizedBox(height: 12.h),
+                  _ProfileMenuTile(
+                    key: const ValueKey('profile_feedback_tile'),
+                    icon: Icons.chat_bubble_outline_rounded,
+                    iconColor: AppColors.primaryBright,
+                    title: locale.tr('menu_feedback'),
+                    onTap: () => _showFeedbackSheet(context, ref, locale),
                   ),
                   SizedBox(height: 12.h),
                   _ProfileMenuTile(
@@ -466,6 +521,124 @@ class ProfileScreen extends ConsumerWidget {
     if (context.mounted) {
       AppToast.show(context, locale.tr('generic_error_toast'));
     }
+  }
+
+  void _showPromotionCodeSheet(
+    BuildContext context,
+    WidgetRef ref,
+    LocaleState locale,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.transparent,
+      builder: (_) => _TextSubmitSheet(
+        sheetKey: const ValueKey('promo_code_sheet'),
+        inputKey: const ValueKey('promo_code_input'),
+        submitKey: const ValueKey('promo_code_submit_btn'),
+        icon: Icons.card_giftcard_rounded,
+        iconColor: AppColors.gold,
+        title: locale.tr('promo_code_title'),
+        description: locale.tr('promo_code_desc'),
+        hintText: locale.tr('promo_code_hint'),
+        submitLabel: locale.tr('promo_apply_btn'),
+        emptyErrorMessage: locale.tr('promo_empty_error'),
+        maxLines: 1,
+        onSubmit: (rawText) async {
+          final ready = await ensureSessionForUserAction(ref);
+          if (!ready) {
+            return (
+              closeSheet: false,
+              inlineError: locale.tr('generic_error_toast'),
+              toastMessage: null,
+            );
+          }
+          try {
+            final PromoFeedbackResult res = await ref
+                .read(accountProvider.notifier)
+                .redeemPromoCode(rawText);
+            return (
+              closeSheet: true,
+              inlineError: null,
+              toastMessage: res.message.isNotEmpty
+                  ? res.message
+                  : locale.tr('vip_activated_title'),
+            );
+          } on PromoRedeemException catch (e) {
+            return (
+              closeSheet: false,
+              inlineError: e.message.isNotEmpty
+                  ? e.message
+                  : locale.tr('promo_invalid_code'),
+              toastMessage: null,
+            );
+          } catch (_) {
+            return (
+              closeSheet: false,
+              inlineError: locale.tr('generic_error_toast'),
+              toastMessage: null,
+            );
+          }
+        },
+      ),
+    );
+  }
+
+  void _showFeedbackSheet(
+    BuildContext context,
+    WidgetRef ref,
+    LocaleState locale,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.transparent,
+      builder: (_) => _TextSubmitSheet(
+        sheetKey: const ValueKey('feedback_sheet'),
+        inputKey: const ValueKey('feedback_input'),
+        submitKey: const ValueKey('feedback_submit_btn'),
+        icon: Icons.chat_bubble_outline_rounded,
+        iconColor: AppColors.primaryBright,
+        title: locale.tr('feedback_title'),
+        description: locale.tr('feedback_desc'),
+        hintText: locale.tr('feedback_hint'),
+        submitLabel: locale.tr('feedback_submit_btn'),
+        emptyErrorMessage: locale.tr('feedback_empty_error'),
+        maxLines: 4,
+        onSubmit: (rawText) async {
+          final ready = await ensureSessionForUserAction(ref);
+          if (!ready) {
+            return (
+              closeSheet: false,
+              inlineError: locale.tr('generic_error_toast'),
+              toastMessage: null,
+            );
+          }
+          try {
+            final PromoFeedbackResult res = await ref
+                .read(accountProvider.notifier)
+                .submitFeedback(rawText);
+            final fallbackToast = res.vipActivated
+                ? locale.tr('vip_activated_title')
+                : locale.tr('feedback_thanks_toast');
+            return (
+              closeSheet: true,
+              inlineError: null,
+              toastMessage:
+                  res.message.isNotEmpty ? res.message : fallbackToast,
+            );
+          } catch (_) {
+            return (
+              closeSheet: false,
+              inlineError: locale.tr('generic_error_toast'),
+              toastMessage: null,
+            );
+          }
+        },
+      ),
+    );
   }
 
   void _showManageSubscriptionSheet(
@@ -620,7 +793,11 @@ class ProfileScreen extends ConsumerWidget {
                   onPressed: () {
                     Navigator.pop(sheetCtx);
                     unawaited(
-                      ref.read(accountProvider.notifier).restorePurchases(),
+                      VipPackageHelper.restorePurchasesWithFeedback(
+                        context: context,
+                        ref: ref,
+                        locale: locale,
+                      ),
                     );
                   },
                   child: Text(
@@ -643,15 +820,20 @@ class ProfileScreen extends ConsumerWidget {
 class _ProfileMenuTile extends StatelessWidget {
   final String? iconAsset;
   final IconData? icon;
+  final Color? iconColor;
+  final Widget? leading;
   final String title;
   final VoidCallback onTap;
 
   const _ProfileMenuTile({
+    super.key,
     this.iconAsset,
     this.icon,
+    this.iconColor,
+    this.leading,
     required this.title,
     required this.onTap,
-  }) : assert(iconAsset != null || icon != null);
+  }) : assert(iconAsset != null || icon != null || leading != null);
 
   @override
   Widget build(BuildContext context) {
@@ -665,7 +847,9 @@ class _ProfileMenuTile extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
           child: Row(
             children: [
-              if (iconAsset != null)
+              if (leading != null)
+                leading!
+              else if (iconAsset != null)
                 Image.asset(
                   iconAsset!,
                   width: 22.w,
@@ -676,7 +860,7 @@ class _ProfileMenuTile extends StatelessWidget {
               else
                 Icon(
                   icon,
-                  color: AppColors.textPrimary,
+                  color: iconColor ?? AppColors.textPrimary,
                   size: 22.sp,
                 ),
               SizedBox(width: 14.w),
@@ -696,6 +880,232 @@ class _ProfileMenuTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+typedef _SheetSubmitOutcome = ({
+  bool closeSheet,
+  String? inlineError,
+  String? toastMessage,
+});
+
+class _TextSubmitSheet extends StatefulWidget {
+  final Key? sheetKey;
+  final Key? inputKey;
+  final Key? submitKey;
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String description;
+  final String hintText;
+  final String submitLabel;
+  final String emptyErrorMessage;
+  final int maxLines;
+  final Future<_SheetSubmitOutcome> Function(String trimmedText) onSubmit;
+
+  const _TextSubmitSheet({
+    this.sheetKey,
+    this.inputKey,
+    this.submitKey,
+    required this.icon,
+    this.iconColor = AppColors.gold,
+    required this.title,
+    required this.description,
+    required this.hintText,
+    required this.submitLabel,
+    required this.emptyErrorMessage,
+    required this.maxLines,
+    required this.onSubmit,
+  });
+
+  @override
+  State<_TextSubmitSheet> createState() => _TextSubmitSheetState();
+}
+
+class _TextSubmitSheetState extends State<_TextSubmitSheet> {
+  final TextEditingController _controller = TextEditingController();
+  bool _isSubmitting = false;
+  String? _inlineError;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSubmit() async {
+    if (_isSubmitting) return;
+    final trimmed = _controller.text.trim();
+    if (trimmed.isEmpty) {
+      setState(() => _inlineError = widget.emptyErrorMessage);
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _inlineError = null;
+    });
+
+    final outcome = await widget.onSubmit(trimmed);
+    if (!mounted) return;
+
+    if (outcome.closeSheet) {
+      final rootNavigator = Navigator.of(context, rootNavigator: true);
+      final toastCtx = rootNavigator.overlay?.context ?? rootNavigator.context;
+      final toastMsg = outcome.toastMessage;
+      Navigator.of(context).pop();
+      if (toastMsg != null && toastMsg.isNotEmpty && toastCtx.mounted) {
+        AppToast.show(toastCtx, toastMsg);
+      }
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _inlineError = outcome.inlineError;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = AppScreenUtils.bottomSafeInset(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Container(
+      key: widget.sheetKey,
+      padding: EdgeInsets.fromLTRB(
+        20.w,
+        12.h,
+        20.w,
+        20.h + bottomInset + keyboardInset,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSheet,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40.w,
+              height: 4.h,
+              margin: EdgeInsets.only(bottom: 14.h),
+              decoration: BoxDecoration(
+                color: AppColors.textWhite24,
+                borderRadius: BorderRadius.circular(2.r),
+              ),
+            ),
+          ),
+          Row(
+            children: [
+              Icon(widget.icon, color: widget.iconColor, size: 22.sp),
+              SizedBox(width: 10.w),
+              Expanded(child: Text(widget.title, style: AppTextStyles.h3)),
+              IconButton(
+                onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textWhite60,
+                  size: 20.sp,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            widget.description,
+            style: AppTextStyles.caption.copyWith(color: AppColors.textWhite70),
+          ),
+          SizedBox(height: 14.h),
+          TextField(
+            key: widget.inputKey,
+            controller: _controller,
+            enabled: !_isSubmitting,
+            maxLines: widget.maxLines,
+            minLines: widget.maxLines > 1 ? 3 : 1,
+            textInputAction: widget.maxLines == 1
+                ? TextInputAction.done
+                : TextInputAction.newline,
+            onChanged: (_) {
+              if (_inlineError != null) {
+                setState(() => _inlineError = null);
+              }
+            },
+            onSubmitted: widget.maxLines == 1 ? (_) => _handleSubmit() : null,
+            style: AppTextStyles.bodyRegular.copyWith(
+              color: AppColors.textPrimary,
+            ),
+            decoration: InputDecoration(
+              hintText: widget.hintText,
+              hintStyle: AppTextStyles.bodyRegular.copyWith(
+                color: AppColors.textWhite38,
+              ),
+              filled: true,
+              fillColor: AppColors.profileTileBg,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: 14.w,
+                vertical: 12.h,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(
+                  color: _inlineError != null
+                      ? AppColors.primaryBright
+                      : AppColors.borderLight,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(
+                  color: _inlineError != null
+                      ? AppColors.primaryBright
+                      : AppColors.gold,
+                ),
+              ),
+            ),
+          ),
+          if (_inlineError != null) ...[
+            SizedBox(height: 8.h),
+            Text(
+              _inlineError!,
+              style: AppTextStyles.captionSmall.copyWith(
+                color: AppColors.primaryBright,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+          SizedBox(height: 16.h),
+          GestureDetector(
+            key: widget.submitKey,
+            onTap: _isSubmitting ? null : _handleSubmit,
+            child: Container(
+              width: double.infinity,
+              height: 48.h,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(24.r),
+              ),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.textPrimary,
+                      ),
+                    )
+                  : Text(
+                      widget.submitLabel,
+                      style: AppTextStyles.rewardContinueBtn,
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

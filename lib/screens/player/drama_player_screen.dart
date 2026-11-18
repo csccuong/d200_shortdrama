@@ -11,6 +11,7 @@ import '../../core/utils/screen_utils.dart';
 import '../../models/drama_card.dart';
 import '../../models/episode_detail.dart';
 import '../../providers/app_providers.dart';
+import '../../services/api/app_api_service.dart';
 import '../../services/firebase_remote_config_service.dart';
 import '../../widgets/episode_selector_sheet.dart';
 import '../../widgets/floating_drama_native_ad.dart';
@@ -62,6 +63,8 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
   bool _didUseInitialSeek = false;
   bool _controlsVisible = true;
   DramaCard? _latestDramaCard;
+  late final MyListNotifier _mylistNotifier;
+  late final AppApiService _appApi;
 
   String get _resolvedDramaId =>
       widget.dramaId ?? widget.dramaCard?.dramaId ?? '';
@@ -69,6 +72,8 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
   @override
   void initState() {
     super.initState();
+    _mylistNotifier = ref.read(mylistProvider.notifier);
+    _appApi = ref.read(appApiServiceProvider);
     WidgetsBinding.instance.addObserver(this);
     _latestDramaCard = widget.dramaCard;
     final safeInitialEp = widget.initialEpisode < 1 ? 1 : widget.initialEpisode;
@@ -186,9 +191,8 @@ class _DramaPlayerScreenState extends ConsumerState<DramaPlayerScreen>
     final id = _resolvedDramaId;
     final drama = _latestDramaCard;
     if (id.isNotEmpty && _didRecordInitialHistory) {
-      // Capture notifiers synchronously before super.dispose() invalidates ref.
-      final mylistNotifier = ref.read(mylistProvider.notifier);
-      final appApi = ref.read(appApiServiceProvider);
+      final mylistNotifier = _mylistNotifier;
+      final appApi = _appApi;
       unawaited(
         Future.microtask(() async {
           try {

@@ -78,7 +78,7 @@ class _HomeCollapsibleAdState extends ConsumerState<HomeCollapsibleAd> {
   }
 
   bool get _isVip =>
-      AppConstants.isPremiumUser.value || ref.read(userWalletProvider).isVip;
+      AppConstants.areAdsDisabled || ref.read(userWalletProvider).isVip;
 
   void _initAds() {
     if (!AppConstants.isMobilePlatform || _isVip) return;
@@ -199,7 +199,7 @@ class _HomeCollapsibleAdState extends ConsumerState<HomeCollapsibleAd> {
   @override
   Widget build(BuildContext context) {
     final isVip =
-        AppConstants.isPremiumUser.value || ref.watch(userWalletProvider).isVip;
+        AppConstants.areAdsDisabled || ref.watch(userWalletProvider).isVip;
     if (isVip && !widget.debugForcePreview && (_nativeAd != null || _bannerAd != null)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(_clearAds);

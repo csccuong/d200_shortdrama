@@ -11,7 +11,7 @@ import '../const/ad_id_name.dart';
 import '../../services/firebase_remote_config_service.dart';
 
 bool _isVip(WidgetRef ref) {
-  return AppConstants.isPremiumUser.value || ref.read(userWalletProvider).isVip;
+  return AppConstants.areAdsDisabled || ref.read(userWalletProvider).isVip;
 }
 
 int _openAdSuppressionDepth = 0;

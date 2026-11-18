@@ -98,11 +98,13 @@ class AdsConfig {
   final bool enableSplashAd;
   final bool enableRewardedUnlock;
   final int interstitialEveryNEpisodes;
+  final bool adsEnabled;
 
   AdsConfig({
     this.enableSplashAd = false,
     this.enableRewardedUnlock = true,
     this.interstitialEveryNEpisodes = 4,
+    this.adsEnabled = true,
   });
 
   factory AdsConfig.fromJson(Map<String, dynamic> json) {
@@ -112,6 +114,7 @@ class AdsConfig {
           json['enable_rewarded_unlock'] as bool? ?? true,
       interstitialEveryNEpisodes:
           json['interstitial_every_n_episodes'] as int? ?? 4,
+      adsEnabled: json['ads_enabled'] as bool? ?? true,
     );
   }
 }
@@ -124,6 +127,7 @@ class AppConfig {
   final int adUnlockDailyLimit;
   final int coinCostPerEpisode;
   final int fullDramaDiscountPct;
+  final String paywallMode;
   final AdsConfig ads;
 
   AppConfig({
@@ -133,10 +137,15 @@ class AppConfig {
     this.adUnlockDailyLimit = 10,
     this.coinCostPerEpisode = 30,
     this.fullDramaDiscountPct = 25,
+    this.paywallMode = 'brackets',
     AdsConfig? ads,
   }) : ads = ads ?? AdsConfig();
 
   factory AppConfig.fromJson(Map<String, dynamic> json) {
+    final paywallJson = json['paywall'];
+    final mode = paywallJson is Map
+        ? paywallJson['mode']?.toString().trim()
+        : null;
     return AppConfig(
       maintenanceMode: json['maintenance_mode'] as bool? ?? false,
       defaultPageSize: json['default_page_size'] as int? ?? 20,
@@ -148,6 +157,7 @@ class AppConfig {
           json['coin_cost_per_episode'] as int? ?? 30,
       fullDramaDiscountPct:
           json['full_drama_discount_pct'] as int? ?? 25,
+      paywallMode: (mode != null && mode.isNotEmpty) ? mode : 'brackets',
       ads: json['ads'] != null
           ? AdsConfig.fromJson(json['ads'] as Map<String, dynamic>)
           : null,
@@ -211,7 +221,10 @@ class InitResponse {
       user: json['user'] != null
           ? UserProfile.fromJson(
               json['user'] as Map<String, dynamic>)
-          : null,
+          : (json['user_state'] != null
+              ? UserProfile.fromJson(
+                  json['user_state'] as Map<String, dynamic>)
+              : null),
       taxonomy: json['taxonomy'] != null
           ? Taxonomy.fromJson(
               json['taxonomy'] as Map<String, dynamic>)

@@ -108,8 +108,7 @@ class SplashController extends ChangeNotifier {
         _apiInitialized = true;
         final effectiveVip = initData.user.isVip ||
             ref.read(walletProvider).isVip ||
-            ref.read(userWalletProvider).isVip ||
-            AppConstants.isPremiumUser.value;
+            ref.read(userWalletProvider).isVip;
 
         ref.read(userWalletProvider.notifier).syncFromApi(
               isVip: effectiveVip,

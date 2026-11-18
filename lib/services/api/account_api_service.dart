@@ -1,7 +1,25 @@
+import 'dart:io' show Platform;
+
 import 'package:dio/dio.dart';
 import 'package:dxx_shortdrama/core/network/api_endpoints.dart';
 import 'package:dxx_shortdrama/models/iap_models.dart';
 import 'package:dxx_shortdrama/models/user_profile.dart';
+import 'package:dxx_shortdrama/services/api/app_api_service.dart';
+import 'package:flutter/foundation.dart';
+
+/// Exception thrown when `POST /v1/iap/verify` rejects a receipt (HTTP 400/403).
+class IapVerificationException implements Exception {
+  final int? statusCode;
+  final String message;
+
+  const IapVerificationException({
+    this.statusCode,
+    required this.message,
+  });
+
+  @override
+  String toString() => message;
+}
 
 /// Group G: Profile, settings, IAP & account APIs (10 endpoints).
 class AccountApiService {
@@ -114,19 +132,40 @@ class AccountApiService {
     return IapCatalog.fromJson(resp.data['data'] as Map<String, dynamic>);
   }
 
-  /// G9. POST /v1/iap/verify — verify store receipt after purchase.
+  /// G9. POST /v1/iap/verify — verify store receipt after purchase or restore.
   Future<Map<String, dynamic>> verifyIap({
     required String productId,
     required String purchaseToken,
+    String orderId = '',
+    bool isRestore = false,
+    bool? isIosOverride,
   }) async {
-    final resp = await _dio.post(
-      ApiEndpoints.iapVerify,
-      data: {
-        'product_id': productId,
-        'purchase_token': purchaseToken,
-      },
-    );
-    return resp.data['data'] as Map<String, dynamic>;
+    final isIos = isIosOverride ?? (!kIsWeb && Platform.isIOS);
+    final payload = isIos
+        ? <String, dynamic>{
+            'platform': 'ios',
+            'product_id': productId,
+            'transaction_id': orderId,
+            'receipt_data': purchaseToken,
+            if (isRestore) 'is_restore': true,
+          }
+        : <String, dynamic>{
+            'platform': 'android',
+            'product_id': productId,
+            'purchase_token': purchaseToken,
+            'order_id': orderId,
+            if (isRestore) 'is_restore': true,
+          };
+    try {
+      final resp = await _dio.post(ApiEndpoints.iapVerify, data: payload);
+      return resp.data['data'] as Map<String, dynamic>? ?? {};
+    } on DioException catch (e) {
+      final msg = AppApiService.extractServerErrorMessage(e);
+      throw IapVerificationException(
+        statusCode: e.response?.statusCode,
+        message: msg.isNotEmpty ? msg : (e.message ?? 'Verification failed'),
+      );
+    }
   }
 
   /// G10. DELETE /v1/me/account — permanently delete account & device data.

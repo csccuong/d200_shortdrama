@@ -10,8 +10,10 @@ import '../core/di/injection.dart';
 import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../models/iap_models.dart';
+import '../models/promo_feedback_models.dart';
 import '../models/user_profile.dart';
 import '../services/api/account_api_service.dart';
+import '../services/api/app_api_service.dart';
 import '../services/iap_service.dart';
 import 'app_providers.dart';
 
@@ -321,10 +323,7 @@ class AccountNotifier extends Notifier<AccountState> {
 
   Future<void> _ensureIapInitialized() async {
     await _iapService.initialize(
-      onVerifyPurchase: (productId, purchaseToken) => verifyIap(
-        productId: productId,
-        purchaseToken: purchaseToken,
-      ),
+      onVerifyPurchase: verifyIap,
     );
   }
 
@@ -332,48 +331,72 @@ class AccountNotifier extends Notifier<AccountState> {
     String? lang,
     bool forceRefresh = false,
   }) async {
-    const catalog = IapCatalog(
-      subscriptions: IapCatalog.defaultVipSubscriptions,
-    );
+    final cached = state.iapCatalog;
     if (!forceRefresh &&
-        state.iapCatalog != null &&
-        _iapService.hasAllCatalogProducts(catalog)) {
-      return state.iapCatalog;
+        cached != null &&
+        cached.subscriptions.isNotEmpty &&
+        _iapService.hasAllCatalogProducts(cached)) {
+      return cached;
     }
 
     final existing = _inFlightCatalog;
     if (existing != null) return existing;
 
-    final future = _runFetchIapCatalog(catalog, forceRefresh: forceRefresh)
-        .whenComplete(() {
+    final resolvedLang =
+        (lang != null && lang.trim().isNotEmpty)
+            ? lang.trim()
+            : AppConstants.selectedLanguageCode;
+    final future = _runFetchIapCatalog(
+      lang: resolvedLang,
+      forceRefresh: forceRefresh,
+    ).whenComplete(() {
       _inFlightCatalog = null;
     });
     _inFlightCatalog = future;
     return future;
   }
 
-  Future<IapCatalog?> _runFetchIapCatalog(
-    IapCatalog catalog, {
+  Future<IapCatalog?> _runFetchIapCatalog({
+    required String lang,
     required bool forceRefresh,
   }) async {
-    state = state.copyWith(isLoadingCatalog: true, iapCatalog: catalog);
+    final fallbackCatalog = const IapCatalog(
+      subscriptions: IapCatalog.defaultVipSubscriptions,
+    );
+    state = state.copyWith(
+      isLoadingCatalog: true,
+      iapCatalog: state.iapCatalog ?? fallbackCatalog,
+    );
+
+    IapCatalog resolvedCatalog = state.iapCatalog ?? fallbackCatalog;
+    try {
+      final serverCatalog = await _service
+          .fetchIapCatalog(lang: lang)
+          .timeout(const Duration(seconds: 6));
+      if (serverCatalog.subscriptions.isNotEmpty) {
+        resolvedCatalog = serverCatalog;
+      }
+    } catch (e) {
+      debugPrint('AccountNotifier.fetchIapCatalog API warning: $e');
+    }
+
     var storeProducts = _iapService.cachedProducts;
     try {
       await _ensureIapInitialized();
       storeProducts = await _iapService.queryCatalogProducts(
-        catalog,
+        resolvedCatalog,
         forceRefresh: forceRefresh,
       );
     } catch (e) {
-      debugPrint('AccountNotifier.fetchIapCatalog error: $e');
+      debugPrint('AccountNotifier.fetchIapCatalog store error: $e');
     } finally {
       state = state.copyWith(
-        iapCatalog: catalog,
+        iapCatalog: resolvedCatalog,
         storeProducts: storeProducts,
         isLoadingCatalog: false,
       );
     }
-    return catalog;
+    return resolvedCatalog;
   }
 
   void cancelPendingPurchase() {
@@ -428,10 +451,15 @@ class AccountNotifier extends Notifier<AccountState> {
   }
 
   Future<bool> restorePurchases() async {
+    final outcome = await restorePurchasesWithOutcome();
+    return outcome == IapRestoreOutcome.restoredVip;
+  }
+
+  Future<IapRestoreOutcome> restorePurchasesWithOutcome() async {
     state = state.copyWith(isPurchasing: true, clearError: true);
     try {
       await _ensureIapInitialized();
-      return await _iapService.restorePurchases();
+      return await _iapService.restorePurchasesWithOutcome();
     } finally {
       state = state.copyWith(isPurchasing: false);
     }
@@ -491,51 +519,101 @@ class AccountNotifier extends Notifier<AccountState> {
           verifyData,
           fallbackIsVip: verifiedVip,
         );
+    final planCode = verifyData['vip_plan_code']?.toString().trim();
     if (verifiedVip != null) {
+      if (verifiedVip) {
+        final adsEnabled = verifyData['ads_enabled'] as bool?;
+        AppConstants.serverAdsEnabled.value = adsEnabled ?? false;
+      }
       ref.read(userWalletProvider.notifier).syncFromApi(
             isVip: verifiedVip,
-            vipPlanName: productId,
+            vipPlanName:
+                (planCode != null && planCode.isNotEmpty) ? planCode : productId,
             autoPlayNext:
                 state.profile?.settings.autoPlayNext ??
                 ref.read(userWalletProvider).autoPlayNext,
           );
     }
+    if (verifiedVip == true) {
+      ref.invalidate(dramaDetailProvider);
+      ref.invalidate(playEpisodeProvider);
+      final lang = AppConstants.selectedLanguageCode;
+      unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
+      if (ref.read(feedProvider).items.isNotEmpty) {
+        unawaited(ref.read(feedProvider.notifier).fetchInitialFeed(lang));
+      }
+    }
     unawaited(_refreshAfterVerify(keepVipIfVerified: verifiedVip == true));
   }
 
-  Future<bool> verifyIap({
-    required String productId,
-    required String purchaseToken,
-  }) async {
-    final isSubscriptionProduct = _isSubscriptionProductId(productId);
+  Future<IapVerifyResult> verifyIap(IapVerifyRequest request) async {
+    final isSubscriptionProduct = _isSubscriptionProductId(request.productId);
     try {
       final verifyData = await _service.verifyIap(
-        productId: productId,
-        purchaseToken: purchaseToken,
+        productId: request.productId,
+        purchaseToken: request.purchaseToken,
+        orderId: request.orderId,
+        isRestore: request.isRestore,
       );
+
+      final isVerified = (verifyData['verified'] as bool?) ?? true;
+      final serverMessage = verifyData['message']?.toString().trim();
+      if (!isVerified) {
+        return IapVerifyResult(
+          verified: false,
+          isVip: false,
+          message: serverMessage,
+        );
+      }
 
       final verifiedVip =
           (verifyData['is_vip'] as bool?) ??
           (isSubscriptionProduct ? true : null);
 
+      if (request.isRestore && verifiedVip != true) {
+        return IapVerifyResult(
+          verified: false,
+          isVip: false,
+          message: serverMessage,
+        );
+      }
+
       _applyVerifiedSubscriptionVip(
-        productId,
+        request.productId,
         verifyData: verifyData,
         verifiedVip: verifiedVip,
       );
-      return true;
+      return IapVerifyResult(
+        verified: true,
+        isVip: verifiedVip == true,
+        message: serverMessage,
+      );
+    } on IapVerificationException catch (e) {
+      debugPrint('AccountNotifier.verifyIap rejected: ${e.message}');
+      state = state.copyWith(errorMessage: e.message);
+      return IapVerifyResult(
+        verified: false,
+        isVip: false,
+        message: e.message,
+      );
     } catch (e) {
-      if (isSubscriptionProduct && _isAlreadyProcessedReceiptError(e)) {
+      if (!request.isRestore &&
+          isSubscriptionProduct &&
+          _isAlreadyProcessedReceiptError(e)) {
         debugPrint(
           'AccountNotifier.verifyIap: receipt already processed for active '
-          'subscription $productId — restoring VIP state.',
+          'subscription ${request.productId} — restoring VIP state.',
         );
-        _applyVerifiedSubscriptionVip(productId, verifiedVip: true);
-        return true;
+        _applyVerifiedSubscriptionVip(request.productId, verifiedVip: true);
+        return const IapVerifyResult(verified: true, isVip: true);
       }
       debugPrint('AccountNotifier.verifyIap error: $e');
       state = state.copyWith(errorMessage: AppStrings.genericError());
-      return false;
+      return IapVerifyResult(
+        verified: false,
+        isVip: false,
+        message: AppStrings.genericError(),
+      );
     }
   }
 
@@ -558,6 +636,131 @@ class AccountNotifier extends Notifier<AccountState> {
       );
       return false;
     }
+  }
+
+  /// Clears `isVip` on the cached profile after a Store refund or expiry.
+  void clearProfileVip() {
+    final p = state.profile;
+    if (p == null || !p.isVip) return;
+    state = state.copyWith(
+      profile: UserProfile(
+        userUid: p.userUid,
+        deviceId: p.deviceId,
+        authProvider: p.authProvider,
+        isGuest: p.isGuest,
+        email: p.email,
+        displayName: p.displayName,
+        avatarUrl: p.avatarUrl,
+        gender: p.gender,
+        birthYear: p.birthYear,
+        isVip: false,
+        vipExpiresAt: null,
+        coinBalance: p.coinBalance,
+        bonusCoinBalance: p.bonusCoinBalance,
+        totalCoins: p.totalCoins,
+        adUnlocksUsedToday: p.adUnlocksUsedToday,
+        adUnlocksRemainingToday: p.adUnlocksRemainingToday,
+        todayWatchSeconds: p.todayWatchSeconds,
+        checkinStreak: p.checkinStreak,
+        canCheckinToday: p.canCheckinToday,
+        favoritesCount: p.favoritesCount,
+        watchLaterCount: p.watchLaterCount,
+        watchedDramasCount: p.watchedDramasCount,
+        settings: p.settings,
+      ),
+    );
+  }
+
+  /// Calls `POST /v1/promo/redeem` with raw trimmed [code] (never validated client-side).
+  Future<PromoFeedbackResult> redeemPromoCode(String code) async {
+    final res = await inject<AppApiService>().redeemPromoCode(code);
+    if (res.vipActivated) {
+      await _activateVipFromPromoOrFeedback(res);
+    }
+    return res;
+  }
+
+  /// Calls `POST /v1/feedback` and activates VIP if `vip_activated == true`.
+  Future<PromoFeedbackResult> submitFeedback(
+    String content, {
+    String category = 'general',
+    String contact = '',
+  }) async {
+    final res = await inject<AppApiService>().submitFeedback(
+      content: content,
+      category: category,
+      contact: contact,
+    );
+    if (res.vipActivated) {
+      await _activateVipFromPromoOrFeedback(res);
+    }
+    return res;
+  }
+
+  Future<void> _activateVipFromPromoOrFeedback(PromoFeedbackResult res) async {
+    // 1. Update global VIP state immediately
+    ref
+        .read(walletProvider.notifier)
+        .applyPromoVipActivation(vipExpiresAt: res.vipExpiresAt);
+    final updatedProfile = res.profile ??
+        (state.profile != null
+            ? UserProfile(
+                userUid: state.profile!.userUid,
+                deviceId: state.profile!.deviceId,
+                authProvider: state.profile!.authProvider,
+                isGuest: state.profile!.isGuest,
+                email: state.profile!.email,
+                displayName: state.profile!.displayName,
+                avatarUrl: state.profile!.avatarUrl,
+                gender: state.profile!.gender,
+                birthYear: state.profile!.birthYear,
+                isVip: true,
+                vipExpiresAt: res.vipExpiresAt ?? state.profile!.vipExpiresAt,
+                coinBalance: state.profile!.coinBalance,
+                bonusCoinBalance: state.profile!.bonusCoinBalance,
+                totalCoins: state.profile!.totalCoins,
+                adUnlocksUsedToday: state.profile!.adUnlocksUsedToday,
+                adUnlocksRemainingToday:
+                    state.profile!.adUnlocksRemainingToday,
+                todayWatchSeconds: state.profile!.todayWatchSeconds,
+                checkinStreak: state.profile!.checkinStreak,
+                canCheckinToday: state.profile!.canCheckinToday,
+                favoritesCount: state.profile!.favoritesCount,
+                watchLaterCount: state.profile!.watchLaterCount,
+                watchedDramasCount: state.profile!.watchedDramasCount,
+                settings: state.profile!.settings,
+              )
+            : null);
+    if (updatedProfile != null) {
+      state = state.copyWith(profile: updatedProfile);
+    }
+    ref.read(userWalletProvider.notifier).syncFromApi(
+          isVip: true,
+          vipPlanName: res.vipPlanCode ?? 'vip_unlimited',
+          autoPlayNext:
+              updatedProfile?.settings.autoPlayNext ??
+              ref.read(userWalletProvider).autoPlayNext,
+        );
+
+    // 2. Disable all ads (Banner, Native, Interstitial, App Open)
+    AppConstants.serverAdsEnabled.value = res.adsEnabled ?? false;
+    AppConstants.isPremiumUser.value = true;
+
+    // 3. Clear RAM caches for drama details & episode lock statuses
+    ref.invalidate(dramaDetailProvider);
+    ref.invalidate(playEpisodeProvider);
+
+    // 4. Re-sync session (/v1/app/init) & reload Home / For You / Rewards
+    final lang = AppConstants.selectedLanguageCode;
+    await ref.read(sessionProvider.notifier).refreshSession();
+    final reloads = <Future<void>>[
+      ref.read(homeProvider.notifier).fetchHome(lang),
+      ref.read(rewardsProvider.notifier).fetchOverview(lang),
+    ];
+    if (ref.read(feedProvider).items.isNotEmpty) {
+      reloads.add(ref.read(feedProvider.notifier).fetchInitialFeed(lang));
+    }
+    await Future.wait(reloads);
   }
 }
 

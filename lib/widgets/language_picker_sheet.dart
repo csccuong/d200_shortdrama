@@ -79,7 +79,7 @@ class LanguagePickerSheet extends ConsumerWidget {
             Flexible(
               child: GridView.builder(
                 shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                physics: AppScreenUtils.adaptiveScrollPhysics,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: AppScreenUtils.isTablet(context) ? 3 : 2,
                   mainAxisSpacing: 8.h,

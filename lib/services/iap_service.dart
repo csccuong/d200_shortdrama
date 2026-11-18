@@ -34,9 +34,41 @@ class IapPurchaseResult {
   bool get isSuccess => outcome == IapPurchaseOutcome.success;
 }
 
-typedef VerifyPurchaseCallback = Future<bool> Function(
-  String productId,
-  String purchaseToken,
+class IapVerifyRequest {
+  final String productId;
+  final String purchaseToken;
+  final String orderId;
+  final bool isRestore;
+
+  const IapVerifyRequest({
+    required this.productId,
+    required this.purchaseToken,
+    this.orderId = '',
+    this.isRestore = false,
+  });
+}
+
+class IapVerifyResult {
+  final bool verified;
+  final bool isVip;
+  final String? message;
+
+  const IapVerifyResult({
+    required this.verified,
+    this.isVip = false,
+    this.message,
+  });
+}
+
+enum IapRestoreOutcome {
+  restoredVip,
+  noActivePlan,
+  storeUnavailable,
+  error,
+}
+
+typedef VerifyPurchaseCallback = Future<IapVerifyResult> Function(
+  IapVerifyRequest request,
 );
 
 /// Handles Google Play Billing (Android) / StoreKit (iOS) purchases via
@@ -54,6 +86,7 @@ class IapService {
   Timer? _resumeGraceTimer;
   bool _sawPendingPurchaseStatus = false;
   Future<void>? _inFlightUpdateWork;
+  bool _restoredVipInCurrentRestore = false;
 
   VerifyPurchaseCallback? _onVerifyPurchase;
   void Function(IapPurchaseResult result)? _onBackgroundPurchase;
@@ -338,30 +371,42 @@ class IapService {
 
   /// Triggers Google Play / Store purchase restoration; updates arrive via [purchaseStream].
   Future<bool> restorePurchases({bool silent = false}) async {
-    if (!_isStoreSupportedPlatform) return false;
+    final outcome = await restorePurchasesWithOutcome(silent: silent);
+    return outcome == IapRestoreOutcome.restoredVip ||
+        outcome == IapRestoreOutcome.noActivePlan;
+  }
+
+  /// Restores purchases and waits briefly for backend verification to finish
+  /// so callers know whether an active VIP subscription was recovered.
+  Future<IapRestoreOutcome> restorePurchasesWithOutcome({
+    bool silent = false,
+  }) async {
+    if (!_isStoreSupportedPlatform) return IapRestoreOutcome.storeUnavailable;
     final releaseAdGuard = silent
         ? null
         : suppressAppOpenAdsOnResume(excludeNextResume: true);
+    _restoredVipInCurrentRestore = false;
     try {
       final available = await _ensureStoreAvailable();
-      if (!available) return false;
+      if (!available) return IapRestoreOutcome.storeUnavailable;
       await _iap.restorePurchases();
-      if (silent) {
-        // Give the broadcast purchaseStream a beat to deliver restored purchases,
-        // then wait briefly for verification to finish before gating Splash/Home ads.
-        await Future<void>.delayed(const Duration(milliseconds: 80));
-        final pendingWork = _inFlightUpdateWork;
-        if (pendingWork != null) {
-          await pendingWork.timeout(
-            const Duration(seconds: 2),
-            onTimeout: () {},
-          );
-        }
+
+      // Give the broadcast purchaseStream a beat to deliver restored purchases,
+      // then wait briefly for backend verification to settle.
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      final pendingWork = _inFlightUpdateWork;
+      if (pendingWork != null) {
+        await pendingWork.timeout(
+          const Duration(seconds: 4),
+          onTimeout: () {},
+        );
       }
-      return true;
+      return _restoredVipInCurrentRestore
+          ? IapRestoreOutcome.restoredVip
+          : IapRestoreOutcome.noActivePlan;
     } catch (e) {
       debugPrint('IapService.restorePurchases error: $e');
-      return false;
+      return IapRestoreOutcome.error;
     } finally {
       releaseAdGuard?.call();
     }
@@ -462,6 +507,8 @@ class IapService {
 
   Future<void> _verifyAndSettlePurchase(PurchaseDetails purchase) async {
     final token = purchase.verificationData.serverVerificationData.trim();
+    final orderId = (purchase.purchaseID ?? '').trim();
+    final isRestore = purchase.status == PurchaseStatus.restored;
     final verifier = _onVerifyPurchase;
     if (token.isEmpty || verifier == null) {
       debugPrint(
@@ -477,26 +524,39 @@ class IapService {
       return;
     }
 
-    var verified = false;
+    var verifyResult = const IapVerifyResult(verified: false);
     try {
-      verified = await verifier(purchase.productID, token);
+      verifyResult = await verifier(
+        IapVerifyRequest(
+          productId: purchase.productID,
+          purchaseToken: token,
+          orderId: orderId,
+          isRestore: isRestore,
+        ),
+      );
     } catch (e) {
       debugPrint('IapService._verifyAndSettlePurchase error: $e');
-      verified = false;
+      verifyResult = IapVerifyResult(verified: false, message: e.toString());
     }
 
-    if (!verified) {
+    if (!verifyResult.verified) {
       debugPrint(
-        'IapService._verifyAndSettlePurchase failed for ${purchase.productID}',
+        'IapService._verifyAndSettlePurchase failed for ${purchase.productID}: '
+        '${verifyResult.message}',
       );
       // Leave purchase unacknowledged so Play Store can retry later.
       _resolvePurchase(
         IapPurchaseResult(
           outcome: IapPurchaseOutcome.verificationFailed,
           productId: purchase.productID,
+          message: verifyResult.message,
         ),
       );
       return;
+    }
+
+    if (isRestore && verifyResult.isVip) {
+      _restoredVipInCurrentRestore = true;
     }
 
     await _completeIfPending(purchase);

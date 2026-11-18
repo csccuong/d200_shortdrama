@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
 import '../constants/app_constants.dart';
+import '../../services/attribution_helper.dart';
 import '../network/drama_dio_interceptor.dart';
 import '../security/drama_crypto_engine.dart';
 import '../security/drama_remote_config_service.dart';
@@ -204,6 +205,9 @@ class AppStartupCoordinator {
     final screenRes = '${view.physicalSize.width.toInt()}x${view.physicalSize.height.toInt()}';
     final locale = WidgetsBinding.instance.platformDispatcher.locale;
 
+    final installReferrer = await AttributionHelper.getAndroidInstallReferrer();
+    final trafficType = await AttributionHelper.getCachedTrafficType();
+
     Map<String, dynamic> payload = {
       'device_id': deviceId,
       'app_version_name': pkgInfo.version,
@@ -212,6 +216,8 @@ class AppStartupCoordinator {
       'app_language': AppConstants.selectedLanguageCode,
       'locale_country_code': locale.countryCode ?? 'US',
       'timezone_offset_min': DateTime.now().timeZoneOffset.inMinutes,
+      'install_referrer': installReferrer,
+      'traffic_type': ?trafficType,
     };
 
     if (Platform.isAndroid) {
@@ -249,6 +255,10 @@ class AppStartupCoordinator {
         <String, dynamic>{};
     crypto.sessionToken = sess['session_token']?.toString() ?? '';
     crypto.sessionSeed = sess['ephemeral_seed']?.toString() ?? '';
+
+    if (trafficType == 'paid') {
+      await AttributionHelper.markPaidAttributionSynced();
+    }
 
     return initData;
   }

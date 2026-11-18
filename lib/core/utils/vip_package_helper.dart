@@ -47,7 +47,9 @@ class VipPackageHelper {
           ? storePrice
           : (isLoadingCatalog
               ? '...'
-              : formatFallbackPrice(sub.price, sub.currency));
+              : (sub.priceDisplay.isNotEmpty
+                  ? formatServerPriceDisplay(sub.priceDisplay, sub.currency)
+                  : formatFallbackPrice(sub.price, sub.currency)));
       return RewardVipPackage(
         productId: sub.productId,
         planKey: sub.productId,
@@ -65,6 +67,14 @@ class VipPackageHelper {
     }).toList();
   }
 
+  static String formatServerPriceDisplay(String priceDisplay, String currency) {
+    final trimmed = priceDisplay.trim();
+    final cur = currency.trim().toUpperCase();
+    if (cur == 'USD') return trimmed.startsWith('\$') ? trimmed : '\$$trimmed';
+    if (cur == 'VND') return '$trimmed ₫';
+    return cur.isEmpty ? trimmed : '$trimmed $cur';
+  }
+
   static String formatFallbackPrice(double price, String currency) {
     final formatted = price == price.roundToDouble()
         ? '${price.toInt()}'
@@ -73,36 +83,51 @@ class VipPackageHelper {
     return '$formatted $currency'.trim();
   }
 
-  static String resolvePlanTitle(VipSubscription sub, LocaleState locale) {
-    final normalized = sub.name.trim().toLowerCase();
+  static String? _resolvePlanTier(VipSubscription sub) {
+    final normalizedName = sub.name.trim().toLowerCase();
+    final normalizedCode = sub.code.trim().toLowerCase();
     if (sub.productId == IapCatalog.weeklyProductId ||
-        normalized == 'weekly') {
-      return locale.tr('reward_plan_weekly');
+        normalizedCode.contains('weekly') ||
+        normalizedName == 'weekly' ||
+        (sub.durationDays > 0 && sub.durationDays <= 7)) {
+      return 'weekly';
     }
     if (sub.productId == IapCatalog.monthlyProductId ||
-        normalized == 'monthly') {
-      return locale.tr('reward_plan_monthly');
+        normalizedCode.contains('monthly') ||
+        normalizedName == 'monthly' ||
+        (sub.durationDays > 7 && sub.durationDays <= 31)) {
+      return 'monthly';
     }
     if (sub.productId == IapCatalog.yearlyProductId ||
-        normalized == 'yearly') {
-      return locale.tr('reward_plan_yearly');
+        normalizedCode.contains('yearly') ||
+        normalizedCode.contains('annual') ||
+        normalizedName == 'yearly' ||
+        sub.durationDays >= 360) {
+      return 'yearly';
+    }
+    return null;
+  }
+
+  static String resolvePlanTitle(VipSubscription sub, LocaleState locale) {
+    switch (_resolvePlanTier(sub)) {
+      case 'weekly':
+        return locale.tr('reward_plan_weekly');
+      case 'monthly':
+        return locale.tr('reward_plan_monthly');
+      case 'yearly':
+        return locale.tr('reward_plan_yearly');
     }
     return sub.name.isNotEmpty ? sub.name : '${sub.durationDays}d VIP';
   }
 
   static String resolvePlanPeriod(VipSubscription sub, LocaleState locale) {
-    final normalized = sub.name.trim().toLowerCase();
-    if (sub.productId == IapCatalog.weeklyProductId ||
-        normalized == 'weekly') {
-      return locale.tr('vip_weekly_period');
-    }
-    if (sub.productId == IapCatalog.monthlyProductId ||
-        normalized == 'monthly') {
-      return locale.tr('vip_monthly_period');
-    }
-    if (sub.productId == IapCatalog.yearlyProductId ||
-        normalized == 'yearly') {
-      return locale.tr('vip_annual_period');
+    switch (_resolvePlanTier(sub)) {
+      case 'weekly':
+        return locale.tr('vip_weekly_period');
+      case 'monthly':
+        return locale.tr('vip_monthly_period');
+      case 'yearly':
+        return locale.tr('vip_annual_period');
     }
     return '/ ${sub.durationDays}d';
   }
@@ -130,9 +155,7 @@ class VipPackageHelper {
     required bool isLoadingCatalog,
     required LocaleState locale,
   }) {
-    final normalized = sub.name.trim().toLowerCase();
-    if (sub.productId == IapCatalog.yearlyProductId ||
-        normalized == 'yearly') {
+    if (_resolvePlanTier(sub) == 'yearly') {
       return null;
     }
     if (isLoadingCatalog && storeProducts.isEmpty) return null;
@@ -234,6 +257,35 @@ class VipPackageHelper {
         return false;
       case IapPurchaseOutcome.verificationFailed:
       case IapPurchaseOutcome.error:
+        final msg = result.message?.trim();
+        AppToast.show(
+          context,
+          (msg != null && msg.isNotEmpty)
+              ? msg
+              : locale.tr('generic_error_toast'),
+        );
+        return false;
+    }
+  }
+
+  /// Restores Store purchases and displays accurate user feedback.
+  static Future<bool> restorePurchasesWithFeedback({
+    required BuildContext context,
+    required WidgetRef ref,
+    required LocaleState locale,
+  }) async {
+    final outcome =
+        await ref.read(accountProvider.notifier).restorePurchasesWithOutcome();
+    if (!context.mounted) return false;
+    switch (outcome) {
+      case IapRestoreOutcome.restoredVip:
+        AppToast.show(context, locale.tr('iap_restore_success'));
+        return true;
+      case IapRestoreOutcome.noActivePlan:
+        AppToast.show(context, locale.tr('iap_restore_empty'));
+        return false;
+      case IapRestoreOutcome.storeUnavailable:
+      case IapRestoreOutcome.error:
         AppToast.show(context, locale.tr('generic_error_toast'));
         return false;
     }

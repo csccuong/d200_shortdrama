@@ -1,5 +1,8 @@
 class ApiEndpoints {
   static const appInit = '/v1/app/init';
+  static const appAttribution = '/v1/app/attribution';
+  static const promoRedeem = '/v1/promo/redeem';
+  static const feedback = '/v1/feedback';
   static const pushToken = '/v1/app/push-token';
   static const heartbeat = '/v1/app/heartbeat';
   static const home = '/v1/home';

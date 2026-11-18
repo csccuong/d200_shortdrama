@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ads/placement/show_placement_ad.dart';
-import '../../core/utils/app_toast.dart';
 import '../../core/utils/screen_utils.dart';
 import '../../core/utils/vip_package_helper.dart';
 import '../../models/drama_card.dart';
@@ -146,11 +145,11 @@ class _RewardsScreenState extends ConsumerState<RewardsScreen> {
   }
 
   Future<void> _handleRestorePurchases(LocaleState locale) async {
-    final started = await ref.read(accountProvider.notifier).restorePurchases();
-    if (!mounted) return;
-    if (!started) {
-      AppToast.show(context, 'Google Play Billing is currently unavailable');
-    }
+    await VipPackageHelper.restorePurchasesWithFeedback(
+      context: context,
+      ref: ref,
+      locale: locale,
+    );
   }
 
   void _showAllVipDramasSheet(List<DramaCard> dramas, LocaleState locale) {

@@ -429,9 +429,11 @@ class _PremiumUpgradeDialogState extends ConsumerState<PremiumUpgradeDialog> {
                             selectedPackage:
                                 packages.isEmpty ? null : packages[safeIdx],
                             onRestore: () => unawaited(
-                              ref
-                                  .read(accountProvider.notifier)
-                                  .restorePurchases(),
+                              VipPackageHelper.restorePurchasesWithFeedback(
+                                context: context,
+                                ref: ref,
+                                locale: locale,
+                              ),
                             ),
                           ),
                         ],

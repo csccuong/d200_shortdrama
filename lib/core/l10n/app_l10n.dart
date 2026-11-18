@@ -6,6 +6,9 @@ import 'locales/l10n_de.dart';
 import 'locales/l10n_en.dart';
 import 'locales/l10n_es.dart';
 import 'locales/l10n_fr.dart';
+import 'locales/l10n_hi.dart';
+import 'locales/l10n_id.dart';
+import 'locales/l10n_it.dart';
 import 'locales/l10n_ja.dart';
 import 'locales/l10n_ko.dart';
 import 'locales/l10n_pt.dart';
@@ -18,6 +21,9 @@ export 'locales/l10n_de.dart';
 export 'locales/l10n_en.dart';
 export 'locales/l10n_es.dart';
 export 'locales/l10n_fr.dart';
+export 'locales/l10n_hi.dart';
+export 'locales/l10n_id.dart';
+export 'locales/l10n_it.dart';
 export 'locales/l10n_ja.dart';
 export 'locales/l10n_ko.dart';
 export 'locales/l10n_pt.dart';
@@ -39,6 +45,9 @@ class AppStrings {
     frLanguagePack,
     deLanguagePack,
     arLanguagePack,
+    hiLanguagePack,
+    idLanguagePack,
+    itLanguagePack,
   ];
 
   static final Map<String, LanguagePack> _packsByCode = {
@@ -56,6 +65,9 @@ class AppStrings {
     LanguageOption(code: 'fr', name: 'Français', flag: '🇫🇷'),
     LanguageOption(code: 'de', name: 'Deutsch', flag: '🇩🇪'),
     LanguageOption(code: 'ar', name: 'العربية', flag: '🇸🇦'),
+    LanguageOption(code: 'hi', name: 'हिन्दी', flag: '🇮🇳'),
+    LanguageOption(code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩'),
+    LanguageOption(code: 'it', name: 'Italiano', flag: '🇮🇹'),
   ];
 
   static LanguagePack getPack(String code) {
@@ -75,13 +87,10 @@ class AppStrings {
   }
 
   static const Map<String, LanguageOption> _extraSubtitleLanguageOptions = {
-    'id': LanguageOption(code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩'),
     'ms': LanguageOption(code: 'ms', name: 'Bahasa Melayu', flag: '🇲🇾'),
     'tr': LanguageOption(code: 'tr', name: 'Türkçe', flag: '🇹🇷'),
     'zh': LanguageOption(code: 'zh', name: '中文', flag: '🇨🇳'),
-    'hi': LanguageOption(code: 'hi', name: 'हिन्दी', flag: '🇮🇳'),
     'ru': LanguageOption(code: 'ru', name: 'Русский', flag: '🇷🇺'),
-    'it': LanguageOption(code: 'it', name: 'Italiano', flag: '🇮🇹'),
   };
 
   static LanguageOption getLanguageOption(String code) {

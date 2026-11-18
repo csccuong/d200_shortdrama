@@ -117,7 +117,7 @@ class _FloatingDramaNativeAdState extends ConsumerState<FloatingDramaNativeAd> {
 
   bool get _canRequestPip {
     final isVip =
-        AppConstants.isPremiumUser.value || ref.read(userWalletProvider).isVip;
+        AppConstants.areAdsDisabled || ref.read(userWalletProvider).isVip;
     final enabledByConfig = FirebaseRemoteConfigService.getBoolConfigByKey(
       FirebaseRemoteConfigService.native_pip,
     );
@@ -213,7 +213,7 @@ class _FloatingDramaNativeAdState extends ConsumerState<FloatingDramaNativeAd> {
   @override
   Widget build(BuildContext context) {
     final isVip =
-        AppConstants.isPremiumUser.value || ref.watch(userWalletProvider).isVip;
+        AppConstants.areAdsDisabled || ref.watch(userWalletProvider).isVip;
     if (widget.hold ||
         _isDismissed ||
         !_isAdLoaded ||

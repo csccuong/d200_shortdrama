@@ -344,14 +344,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
       _streamBundle = bundle;
       await _startVideoStream(bundle);
     } on DramaPaywallException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingPlay = false;
-        _setPaywallState(
-          PaywallResponse.fromJson(e.paywallData),
-          e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED',
-        );
-      });
+      _handleEpisodePaywall(e);
     } catch (e, st) {
       debugPrint(
         'ShortVideoItem._initEpisode error (${widget.drama.dramaId} ep ${widget.episodeNo}): $e\n$st',
@@ -364,6 +357,18 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         _errorMessage = ref.read(localeProvider).tr('generic_error_toast');
       });
     }
+  }
+
+  void _handleEpisodePaywall(DramaPaywallException e) {
+    if (!mounted) return;
+    ref.read(sessionProvider.notifier).handleInAppRefundDetected();
+    setState(() {
+      _isLoadingPlay = false;
+      _setPaywallState(
+        PaywallResponse.fromJson(e.paywallData),
+        e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED',
+      );
+    });
   }
 
   Future<void> _safePlay(VideoPlayerController? ctrl) async {
@@ -498,14 +503,7 @@ class _ShortVideoItemState extends ConsumerState<ShortVideoItem>
         autoPlayAfter: autoPlayAfter,
       );
     } on DramaPaywallException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isLoadingPlay = false;
-        _setPaywallState(
-          PaywallResponse.fromJson(e.paywallData),
-          e.paywallData['block_reason'] as String? ?? 'EPISODE_LOCKED',
-        );
-      });
+      _handleEpisodePaywall(e);
     } catch (e, st) {
       debugPrint(
         'ShortVideoItem._renewEpisodeStream error (${widget.drama.dramaId} ep ${widget.episodeNo}): $e\n$st',

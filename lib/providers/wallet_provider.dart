@@ -115,6 +115,19 @@ class WalletNotifier extends Notifier<WalletState> {
     );
   }
 
+  /// Immediately updates VIP state when a promo code or reviewer feedback unlocks VIP.
+  void applyPromoVipActivation({String? vipExpiresAt}) {
+    state = state.copyWith(
+      isVip: true,
+      vipExpiresAt: vipExpiresAt ?? state.vipExpiresAt,
+    );
+  }
+
+  /// Revokes local VIP state (e.g. when `/play` returns HTTP 402 after a Store refund).
+  void revokeVip() {
+    state = state.copyWith(isVip: false, clearVipExpiry: true);
+  }
+
   /// Syncs wallet from RewardsOverview.wallet snapshot.
   void updateFromWalletInfo(WalletInfo wallet) {
     state = state.copyWith(

@@ -33,7 +33,7 @@ class _BottomNativeAllAdState extends ConsumerState<BottomNativeAllAd> {
 
   bool _allowed(int shellIndex) {
     if (!_isActive(shellIndex) || !AppConstants.isMobilePlatform) return false;
-    if (AppConstants.isPremiumUser.value) return false;
+    if (AppConstants.areAdsDisabled) return false;
     if (ref.read(userWalletProvider).isVip) return false;
     return FirebaseRemoteConfigService.getBoolConfigByKey(
       FirebaseRemoteConfigService.native_all,
@@ -82,7 +82,7 @@ class _BottomNativeAllAdState extends ConsumerState<BottomNativeAllAd> {
   Widget build(BuildContext context) {
     final shellIndex = ref.watch(shellTabIndexProvider);
     final isVip =
-        AppConstants.isPremiumUser.value || ref.watch(userWalletProvider).isVip;
+        AppConstants.areAdsDisabled || ref.watch(userWalletProvider).isVip;
 
     if (!_allowed(shellIndex) || isVip) {
       if (_nativeAd != null) {

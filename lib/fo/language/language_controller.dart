@@ -170,6 +170,27 @@ class LanguageController extends ChangeNotifier {
       singleCountryCode: 'th',
     ),
     LanguageGroupModel(
+      groupId: 'hi',
+      title: 'हिन्दी',
+      nativeName: 'Hindi',
+      languageCode: 'hi',
+      singleCountryCode: 'in',
+    ),
+    LanguageGroupModel(
+      groupId: 'id',
+      title: 'Bahasa Indonesia',
+      nativeName: 'Indonesian',
+      languageCode: 'id',
+      singleCountryCode: 'id',
+    ),
+    LanguageGroupModel(
+      groupId: 'it',
+      title: 'Italiano',
+      nativeName: 'Italian',
+      languageCode: 'it',
+      singleCountryCode: 'it',
+    ),
+    LanguageGroupModel(
       groupId: 'en',
       title: 'English',
       nativeName: 'English',

@@ -49,14 +49,22 @@ class AppConstants {
   static const String termsOfServiceUrl = 'https://dramota.com/terms';
 
   static final ValueNotifier<bool> isPremiumUser = ValueNotifier<bool>(false)
-    ..addListener(() {
-      if (isMobilePlatform) {
-        EasyAds.instance.setPremiumUser(isPremiumUser.value);
-        if (isPremiumUser.value) {
-          EasyAds.instance.appLifecycleReactor?.setAllowAppOpenAd(false);
-        }
-      }
-    });
+    ..addListener(_syncEasyAdsDisabledState);
+
+  static final ValueNotifier<bool> serverAdsEnabled = ValueNotifier<bool>(true)
+    ..addListener(_syncEasyAdsDisabledState);
+
+  static bool get areAdsDisabled =>
+      isPremiumUser.value || !serverAdsEnabled.value;
+
+  static void _syncEasyAdsDisabledState() {
+    if (!isMobilePlatform) return;
+    final disabled = areAdsDisabled;
+    EasyAds.instance.setPremiumUser(disabled);
+    if (disabled) {
+      EasyAds.instance.appLifecycleReactor?.setAllowAppOpenAd(false);
+    }
+  }
 
   static bool appInBackground = false;
   static int intervalInterAd = 35;

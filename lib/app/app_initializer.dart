@@ -13,6 +13,7 @@ import '../core/helper/firebase_helper.dart';
 import '../core/utils/screen_utils.dart';
 import '../main.dart' as app_main;
 import '../services/ads_service.dart';
+import '../services/attribution_helper.dart';
 import '../services/firebase_remote_config_service.dart';
 import '../services/shared_preference_service.dart';
 
@@ -74,7 +75,12 @@ class AppInitializer {
 
         await EasyAds.instance.initAdjust(
           config,
-          onOrganicChanged: (isOrganic) => AdsService.setIsOrganic(isOrganic),
+          onOrganicChanged: (isOrganic) {
+            AdsService.setIsOrganic(isOrganic);
+            unawaited(
+              AttributionHelper.handleAdjustAttribution(isOrganic: isOrganic),
+            );
+          },
         );
       }
 

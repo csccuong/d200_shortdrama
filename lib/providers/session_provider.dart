@@ -10,9 +10,10 @@ import '../core/l10n/app_l10n.dart';
 import '../core/startup/app_startup_coordinator.dart';
 import '../core/security/drama_remote_config_service.dart';
 import '../models/init_response.dart';
+import '../services/api/app_api_service.dart';
+import '../services/attribution_helper.dart';
 import '../services/shared_preference_service.dart';
-import 'account_provider.dart';
-import 'wallet_provider.dart';
+import 'app_providers.dart';
 
 // ============================================================================
 // SESSION STATE — Holds full API session lifecycle
@@ -131,8 +132,15 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
 
       final effectiveVip =
           initResponse.user.isVip || ref.read(walletProvider).isVip;
+      AppConstants.serverAdsEnabled.value =
+          initResponse.appConfig.ads.adsEnabled;
       AppConstants.isPremiumUser.value = effectiveVip;
       unawaited(SharedPreferenceService.setIsPremiumUser(effectiveVip));
+      ref.read(userWalletProvider.notifier).syncFromApi(
+            isVip: effectiveVip,
+            vipPlanName: effectiveVip ? 'VIP' : 'FREE',
+            autoPlayNext: initResponse.user.settings.autoPlayNext,
+          );
 
       final sessionState = SessionState(
         isInitialized: true,
@@ -145,6 +153,11 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
 
       _stopConnectivityListener();
       state = AsyncValue.data(sessionState);
+      AttributionHelper.onLatePaidAttribution = _syncLatePaidAttribution;
+      if (await AttributionHelper.getCachedTrafficType() == 'paid' &&
+          !await AttributionHelper.hasSyncedPaidAttribution()) {
+        unawaited(_syncLatePaidAttribution());
+      }
       unawaited(ref.read(accountProvider.notifier).fetchIapCatalog());
       return sessionState;
     } on StateError catch (e, st) {
@@ -195,8 +208,15 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       }
       final effectiveVip =
           initResponse.user.isVip || ref.read(walletProvider).isVip;
+      AppConstants.serverAdsEnabled.value =
+          initResponse.appConfig.ads.adsEnabled;
       AppConstants.isPremiumUser.value = effectiveVip;
       unawaited(SharedPreferenceService.setIsPremiumUser(effectiveVip));
+      ref.read(userWalletProvider.notifier).syncFromApi(
+            isVip: effectiveVip,
+            vipPlanName: effectiveVip ? 'VIP' : 'FREE',
+            autoPlayNext: initResponse.user.settings.autoPlayNext,
+          );
 
       state = AsyncValue.data(current.copyWith(
         initData: initResponse,
@@ -206,6 +226,72 @@ class SessionNotifier extends AsyncNotifier<SessionState> {
       debugPrint('SessionNotifier.refreshSession error: $e');
       state = AsyncValue.error(e, st);
     }
+  }
+
+  Future<void>? _inFlightAttributionSync;
+
+  Future<void> _syncLatePaidAttribution() {
+    final existing = _inFlightAttributionSync;
+    if (existing != null) return existing;
+    final future = _runSyncLatePaidAttribution().whenComplete(() {
+      _inFlightAttributionSync = null;
+    });
+    _inFlightAttributionSync = future;
+    return future;
+  }
+
+  Future<void> _runSyncLatePaidAttribution() async {
+    final current = state.asData?.value;
+    if (current == null || !current.isInitialized) return;
+    if (await AttributionHelper.hasSyncedPaidAttribution()) return;
+
+    final deviceId = current.deviceId ?? '';
+    if (deviceId.isEmpty) return;
+
+    try {
+      final installReferrer =
+          await AttributionHelper.getAndroidInstallReferrer();
+      await inject<AppApiService>().reportAttribution(
+        deviceId: deviceId,
+        trafficType: 'paid',
+        installReferrer: installReferrer,
+      );
+      await AttributionHelper.markPaidAttributionSynced();
+
+      final lang = AppConstants.selectedLanguageCode;
+      if (ref.read(homeProvider).asData?.value.homeData != null) {
+        unawaited(ref.read(homeProvider.notifier).fetchHome(lang));
+      }
+      if (ref.read(feedProvider).items.isNotEmpty) {
+        unawaited(ref.read(feedProvider.notifier).fetchInitialFeed(lang));
+      }
+    } catch (e) {
+      debugPrint('SessionNotifier._syncLatePaidAttribution error: $e');
+    }
+  }
+
+  /// Section 5.2 (IAP Guide): if `/play` returns HTTP 402 while RAM `isVip` is
+  /// still `true` (e.g. Store approved a refund mid-session), immediately
+  /// downgrade VIP, re-enable ads, clear episode caches, and refresh `/app/init`.
+  void handleInAppRefundDetected() {
+    final hasRamVip = AppConstants.isPremiumUser.value ||
+        ref.read(userWalletProvider).isVip ||
+        ref.read(walletProvider).isVip ||
+        (ref.read(accountProvider).profile?.isVip ?? false);
+    if (!hasRamVip) return;
+
+    ref.read(walletProvider.notifier).revokeVip();
+    ref.read(accountProvider.notifier).clearProfileVip();
+    ref.read(userWalletProvider.notifier).syncFromApi(
+          isVip: false,
+          vipPlanName: 'FREE',
+        );
+    AppConstants.serverAdsEnabled.value = true;
+    AppConstants.isPremiumUser.value = false;
+    unawaited(SharedPreferenceService.setIsPremiumUser(false));
+    ref.invalidate(dramaDetailProvider);
+    ref.invalidate(playEpisodeProvider);
+    unawaited(refreshSession());
   }
 }
 
@@ -245,7 +331,13 @@ extension SessionAsyncX on AsyncValue<SessionState> {
 /// pull-to-refresh on any screen, while keeping offline widget tests safe.
 Future<bool> ensureSessionForUserAction(WidgetRef ref) async {
   if (AppConstants.isFlutterTest) {
-    return ref.read(sessionProvider).isReady;
+    final current = ref.read(sessionProvider);
+    if (current.hasValue) return current.isReady;
+    try {
+      return (await ref.read(sessionProvider.future)).isInitialized;
+    } catch (_) {
+      return false;
+    }
   }
   return ref.read(sessionProvider.notifier).ensureInitialized();
 }
